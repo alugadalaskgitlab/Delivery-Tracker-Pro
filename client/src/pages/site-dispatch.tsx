@@ -75,7 +75,7 @@ function beep() {
     o.connect(g);
     g.connect(ctx.destination);
     o.start();
-    g.gain.exponentialRampToValueAtTime(0.10, ctx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime + 0.01);
     o.frequency.exponentialRampToValueAtTime(520, ctx.currentTime + 0.16);
     g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.36);
     o.stop(ctx.currentTime + 0.38);
@@ -184,6 +184,7 @@ export default function SiteDispatch() {
   const [notifications, setNotifications] = useState<NotificationEvent[]>(initialNotifications);
 
   const party = useMemo(() => parties.find((p) => p.accessId === accessId), [parties, accessId]);
+
   const partyDispatches = useMemo(
     () =>
       dispatches
@@ -193,7 +194,26 @@ export default function SiteDispatch() {
     [dispatches, party?.id],
   );
 
-  const active = useMemo(() => partyDispatches.find((d) => d.status !== "LEFT") ?? null, [partyDispatches]);
+  const [selectedDispatchId, setSelectedDispatchId] = useState<string>("");
+
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const fromQuery = sp.get("dispatchId") || "";
+    if (fromQuery && partyDispatches.some((d) => d.id === fromQuery)) {
+      setSelectedDispatchId(fromQuery);
+      return;
+    }
+    if (!selectedDispatchId) {
+      const firstPending = partyDispatches.find((d) => d.status !== "LEFT")?.id;
+      setSelectedDispatchId(firstPending ?? partyDispatches[0]?.id ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partyDispatches.length, party?.id]);
+
+  const selected = useMemo(
+    () => partyDispatches.find((d) => d.id === selectedDispatchId) ?? null,
+    [partyDispatches, selectedDispatchId],
+  );
 
   const [arrivedName, setArrivedName] = useState("");
   const [receivedMT, setReceivedMT] = useState("");
@@ -219,11 +239,10 @@ export default function SiteDispatch() {
     localStorage.setItem("df_notifications_v2", JSON.stringify(nextNotifs));
   }
 
-  function acknowledgeArrived() {
+  function acknowledgeArrived(target: Dispatch) {
     if (!party) return;
     if (party.status !== "ACTIVE") return;
-    if (!active) return;
-    if (active.status !== "DISPATCHED") return;
+    if (target.status !== "DISPATCHED") return;
 
     const name = arrivedName.trim();
     const qty = clampNum(receivedMT);
@@ -237,7 +256,7 @@ export default function SiteDispatch() {
     }
 
     const nextDispatches = dispatches.map((d) =>
-      d.id === active.id
+      d.id === target.id
         ? {
             ...d,
             status: "ARRIVED" as const,
@@ -252,16 +271,16 @@ export default function SiteDispatch() {
     nextNotifs = pushNotification(
       "SITE",
       "Arrival confirmed",
-      `${active.challanNo} • Received ${qty.toFixed(2)} MT`,
+      `${target.challanNo} • Received ${qty.toFixed(2)} MT`,
       nextNotifs,
-      { dispatchId: active.id, partyId: active.partyId },
+      { dispatchId: target.id, partyId: target.partyId },
     );
     nextNotifs = pushNotification(
       "ADMIN",
       "Truck arrived",
-      `${active.challanNo} arrived • Received ${qty.toFixed(2)} MT • By ${name}`,
+      `${target.challanNo} arrived • Received ${qty.toFixed(2)} MT • By ${name}`,
       nextNotifs,
-      { dispatchId: active.id, partyId: active.partyId },
+      { dispatchId: target.id, partyId: target.partyId },
     );
 
     persist(nextDispatches, nextNotifs);
@@ -270,11 +289,10 @@ export default function SiteDispatch() {
     setReceivedMT("");
   }
 
-  function acknowledgeLeft() {
+  function acknowledgeLeft(target: Dispatch) {
     if (!party) return;
     if (party.status !== "ACTIVE") return;
-    if (!active) return;
-    if (active.status !== "ARRIVED") return;
+    if (target.status !== "ARRIVED") return;
 
     const name = leftName.trim();
     if (!name) {
@@ -283,7 +301,7 @@ export default function SiteDispatch() {
     }
 
     const nextDispatches = dispatches.map((d) =>
-      d.id === active.id
+      d.id === target.id
         ? {
             ...d,
             status: "LEFT" as const,
@@ -297,16 +315,16 @@ export default function SiteDispatch() {
     nextNotifs = pushNotification(
       "SITE",
       "Departure confirmed",
-      `${active.challanNo} • Truck left the site`,
+      `${target.challanNo} • Truck left the site`,
       nextNotifs,
-      { dispatchId: active.id, partyId: active.partyId },
+      { dispatchId: target.id, partyId: target.partyId },
     );
     nextNotifs = pushNotification(
       "ADMIN",
       "Truck left",
-      `${active.challanNo} left • Confirmed by ${name}`,
+      `${target.challanNo} left • Confirmed by ${name}`,
       nextNotifs,
-      { dispatchId: active.id, partyId: active.partyId },
+      { dispatchId: target.id, partyId: target.partyId },
     );
 
     persist(nextDispatches, nextNotifs);
@@ -374,7 +392,7 @@ export default function SiteDispatch() {
             <div className="text-sm text-muted-foreground">Please contact the admin team if you need a report or reconciliation.</div>
 
             <div className="mt-4">
-              <Button data-testid="button-go-admin" variant="secondary" onClick={() => setLocation("/admin")}> 
+              <Button data-testid="button-go-admin" variant="secondary" onClick={() => setLocation("/admin")}>
                 Go to admin dashboard
               </Button>
             </div>
@@ -422,10 +440,10 @@ export default function SiteDispatch() {
                     </div>
                     <div>
                       <h1 data-testid="text-site-active-title" className="font-serif text-xl">
-                        Current Dispatch
+                        Dispatch acknowledgements
                       </h1>
                       <p data-testid="text-site-active-subtitle" className="text-sm text-muted-foreground">
-                        Confirm arrival + received quantity, then confirm departure after unloading.
+                        Select a trip, then confirm ARRIVED and LEFT per trip.
                       </p>
                     </div>
                   </div>
@@ -440,130 +458,151 @@ export default function SiteDispatch() {
 
               <Separator className="my-4" />
 
-              {!active ? (
+              {partyDispatches.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center" data-testid="empty-site">
                   <Truck className="mx-auto h-10 w-10 text-muted-foreground" />
-                  <div className="mt-3 font-serif text-lg">No active dispatch right now</div>
-                  <div className="mt-1 text-sm text-muted-foreground">Wait for the next truck to be dispatched.</div>
+                  <div className="mt-3 font-serif text-lg">No dispatches yet</div>
+                  <div className="mt-1 text-sm text-muted-foreground">Wait for the plant/admin team to create a dispatch.</div>
                 </div>
               ) : (
                 <div className="space-y-4" data-testid="panel-site-active">
-                  <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div data-testid="text-site-challan" className="font-mono text-xs text-muted-foreground">
-                        {active.challanNo}
-                      </div>
-                      {statusBadge(active.status)}
-                      <Badge className="df-pill" variant="secondary" data-testid="badge-site-vehicle">
-                        <Truck className="mr-1 h-3.5 w-3.5" />
-                        {active.vehicleNo}
-                      </Badge>
-                    </div>
-
-                    <div className="mt-2 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
-                      <div data-testid="text-site-party">
-                        <span className="text-muted-foreground">Party:</span> {active.partyName} ({active.partyCode})
-                      </div>
-                      <div data-testid="text-site-site">
-                        <span className="text-muted-foreground">Site:</span> {active.siteName}
-                      </div>
-                      <div data-testid="text-site-load">
-                        <span className="text-muted-foreground">Load:</span> {active.loadMT.toFixed(2)} MT
-                      </div>
-                      <div data-testid="text-site-dispatched-at">
-                        <span className="text-muted-foreground">Dispatched:</span> {format(active.createdAt, "dd MMM • HH:mm")}
-                      </div>
-                    </div>
-
-                    {active.arrivedAt ? (
-                      <div className="mt-3 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">
-                        <div data-testid="text-site-arrived-line">
-                          Arrived {format(active.arrivedAt, "dd MMM • HH:mm")} • By {active.arrivedByName} • Received {(active.receivedMT ?? 0).toFixed(2)} MT
-                        </div>
-                      </div>
-                    ) : null}
-                    {active.leftAt ? (
-                      <div className="mt-3 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">
-                        <div data-testid="text-site-left-line">Left {format(active.leftAt, "dd MMM • HH:mm")} • By {active.leftByName}</div>
-                      </div>
-                    ) : null}
+                  <div className="space-y-2">
+                    <Label data-testid="label-select-trip" htmlFor="trip">
+                      Select trip\n                    </Label>
+                    <SelectTrip
+                      items={partyDispatches}
+                      value={selectedDispatchId}
+                      onChange={setSelectedDispatchId}
+                    />
                   </div>
 
-                  {active.status === "DISPATCHED" ? (
-                    <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
-                      <div className="text-sm font-medium" data-testid="text-arrival-form-title">
-                        Arrival acknowledgement
-                      </div>
-                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="arrivedName" data-testid="label-arrived-name">
-                            Your name (required)
-                          </Label>
-                          <Input
-                            id="arrivedName"
-                            value={arrivedName}
-                            onChange={(e) => setArrivedName(e.target.value)}
-                            placeholder="e.g., Rakesh"
-                            data-testid="input-arrived-name"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="received" data-testid="label-received-mt">
-                            Received quantity (MT)
-                          </Label>
-                          <Input
-                            id="received"
-                            value={receivedMT}
-                            onChange={(e) => setReceivedMT(e.target.value)}
-                            inputMode="decimal"
-                            placeholder="e.g., 18.2"
-                            data-testid="input-received-mt"
-                          />
-                        </div>
-                      </div>
-                      <Button className="mt-4 w-full gap-2" onClick={acknowledgeArrived} data-testid="button-confirm-arrived">
-                        <Check className="h-4 w-4" />
-                        Confirm arrived
-                      </Button>
+                  {!selected ? (
+                    <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-8 text-center text-sm text-muted-foreground" data-testid="empty-selected">
+                      Select a trip to proceed.
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div data-testid="text-site-challan" className="font-mono text-xs text-muted-foreground">
+                          {selected.challanNo}
+                        </div>
+                        {statusBadge(selected.status)}
+                        <Badge className="df-pill" variant="secondary" data-testid="badge-site-vehicle">
+                          <Truck className="mr-1 h-3.5 w-3.5" />
+                          {selected.vehicleNo}
+                        </Badge>
+                      </div>
 
-                  {active.status === "ARRIVED" ? (
-                    <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
-                      <div className="text-sm font-medium" data-testid="text-left-form-title">
-                        Departure acknowledgement
-                      </div>
-                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="leftName" data-testid="label-left-name">
-                            Your name (required)
-                          </Label>
-                          <Input
-                            id="leftName"
-                            value={leftName}
-                            onChange={(e) => setLeftName(e.target.value)}
-                            placeholder="e.g., Suresh"
-                            data-testid="input-left-name"
-                          />
+                      <div className="mt-2 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+                        <div data-testid="text-site-party">
+                          <span className="text-muted-foreground">Party:</span> {selected.partyName} ({selected.partyCode})
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="leftTime" data-testid="label-left-time">
-                            Left time (auto)
-                          </Label>
-                          <Input
-                            id="leftTime"
-                            readOnly
-                            value={format(Date.now(), "dd MMM • HH:mm")}
-                            data-testid="input-left-time"
-                          />
+                        <div data-testid="text-site-site">
+                          <span className="text-muted-foreground">Site:</span> {selected.siteName}
+                        </div>
+                        <div data-testid="text-site-load">
+                          <span className="text-muted-foreground">Load:</span> {selected.loadMT.toFixed(2)} MT
+                        </div>
+                        <div data-testid="text-site-dispatched-at">
+                          <span className="text-muted-foreground">Dispatched:</span> {format(selected.createdAt, "dd MMM • HH:mm")}
                         </div>
                       </div>
-                      <Button className="mt-4 w-full gap-2" onClick={acknowledgeLeft} data-testid="button-confirm-left">
-                        <Check className="h-4 w-4" />
-                        Confirm truck left
-                      </Button>
+
+                      {selected.arrivedAt ? (
+                        <div className="mt-3 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">
+                          <div data-testid="text-site-arrived-line">
+                            Arrived {format(selected.arrivedAt, "dd MMM • HH:mm")} • By {selected.arrivedByName} • Received {(selected.receivedMT ?? 0).toFixed(2)} MT
+                          </div>
+                        </div>
+                      ) : null}
+                      {selected.leftAt ? (
+                        <div className="mt-3 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">
+                          <div data-testid="text-site-left-line">Left {format(selected.leftAt, "dd MMM • HH:mm")} • By {selected.leftByName}</div>
+                        </div>
+                      ) : null}
+
+                      {selected.status === "DISPATCHED" ? (
+                        <div className="mt-4 rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
+                          <div className="text-sm font-medium" data-testid="text-arrival-form-title">
+                            Arrival acknowledgement
+                          </div>
+                          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label htmlFor="arrivedName" data-testid="label-arrived-name">
+                                Your name (required)
+                              </Label>
+                              <Input
+                                id="arrivedName"
+                                value={arrivedName}
+                                onChange={(e) => setArrivedName(e.target.value)}
+                                placeholder="e.g., Rakesh"
+                                data-testid="input-arrived-name"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="received" data-testid="label-received-mt">
+                                Received quantity (MT)
+                              </Label>
+                              <Input
+                                id="received"
+                                value={receivedMT}
+                                onChange={(e) => setReceivedMT(e.target.value)}
+                                inputMode="decimal"
+                                placeholder="e.g., 18.2"
+                                data-testid="input-received-mt"
+                              />
+                            </div>
+                          </div>
+                          <Button
+                            className="mt-4 w-full gap-2"
+                            onClick={() => acknowledgeArrived(selected)}
+                            data-testid="button-confirm-arrived"
+                          >
+                            <Check className="h-4 w-4" />
+                            Confirm arrived
+                          </Button>
+                        </div>
+                      ) : null}
+
+                      {selected.status === "ARRIVED" ? (
+                        <div className="mt-4 rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
+                          <div className="text-sm font-medium" data-testid="text-left-form-title">
+                            Departure acknowledgement
+                          </div>
+                          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label htmlFor="leftName" data-testid="label-left-name">
+                                Your name (required)
+                              </Label>
+                              <Input
+                                id="leftName"
+                                value={leftName}
+                                onChange={(e) => setLeftName(e.target.value)}
+                                placeholder="e.g., Suresh"
+                                data-testid="input-left-name"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="leftTime" data-testid="label-left-time">
+                                Left time (auto)
+                              </Label>
+                              <Input id="leftTime" readOnly value={format(Date.now(), "dd MMM • HH:mm")} data-testid="input-left-time" />
+                            </div>
+                          </div>
+                          <Button className="mt-4 w-full gap-2" onClick={() => acknowledgeLeft(selected)} data-testid="button-confirm-left">
+                            <Check className="h-4 w-4" />
+                            Confirm truck left
+                          </Button>
+                        </div>
+                      ) : null}
+
+                      {selected.status === "LEFT" ? (
+                        <div className="mt-4 rounded-2xl border border-border/70 bg-emerald-500/10 p-4 text-sm text-emerald-800" data-testid="text-site-complete">
+                          This trip is completed.
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
+                  )}
                 </div>
               )}
             </Card>
@@ -574,10 +613,9 @@ export default function SiteDispatch() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 data-testid="text-site-history-title" className="font-serif text-lg">
-                    Dispatch history
-                  </h2>
+                    All trips\n                  </h2>
                   <p data-testid="text-site-history-subtitle" className="text-sm text-muted-foreground">
-                    Recent challans for this party/order.
+                    Each challan remains selectable and can be acknowledged independently.
                   </p>
                 </div>
                 <Badge className="df-pill" variant="secondary" data-testid="badge-site-project">
@@ -588,11 +626,15 @@ export default function SiteDispatch() {
               <Separator className="my-4" />
 
               <div className="space-y-3">
-                {partyDispatches.slice(0, 8).map((d) => (
-                  <div
+                {partyDispatches.map((d) => (
+                  <button
                     key={d.id}
-                    className="rounded-2xl border border-border/70 bg-card/60 p-4 text-sm shadow-sm"
-                    data-testid={`card-site-history-${d.id}`}
+                    type="button"
+                    className={`w-full rounded-2xl border border-border/70 bg-card/60 p-4 text-left text-sm shadow-sm transition hover:shadow-md ${
+                      d.id === selectedDispatchId ? "ring-2 ring-primary/30" : ""
+                    }`}
+                    onClick={() => setSelectedDispatchId(d.id)}
+                    data-testid={`button-select-trip-${d.id}`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -601,7 +643,7 @@ export default function SiteDispatch() {
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           {statusBadge(d.status)}
-                          <Badge className="df-pill" variant="secondary" data-testid={`badge-site-history-vehicle-${d.id}`}> 
+                          <Badge className="df-pill" variant="secondary" data-testid={`badge-site-history-vehicle-${d.id}`}>
                             <Truck className="mr-1 h-3.5 w-3.5" />
                             {d.vehicleNo}
                           </Badge>
@@ -615,7 +657,7 @@ export default function SiteDispatch() {
 
                     {d.arrivedAt ? (
                       <div className="mt-3 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">
-                        <div data-testid={`text-site-history-arrived-${d.id}`}> 
+                        <div data-testid={`text-site-history-arrived-${d.id}`}>
                           Arrived {format(d.arrivedAt, "HH:mm")} • {d.arrivedByName} • Rec {(d.receivedMT ?? 0).toFixed(2)} MT
                         </div>
                       </div>
@@ -625,7 +667,7 @@ export default function SiteDispatch() {
                         <div data-testid={`text-site-history-left-${d.id}`}>Left {format(d.leftAt, "HH:mm")} • {d.leftByName}</div>
                       </div>
                     ) : null}
-                  </div>
+                  </button>
                 ))}
 
                 {partyDispatches.length === 0 ? (
@@ -650,5 +692,30 @@ export default function SiteDispatch() {
         </div>
       </main>
     </div>
+  );
+}
+
+function SelectTrip({
+  items,
+  value,
+  onChange,
+}: {
+  items: Dispatch[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <select
+      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      data-testid="select-trip"
+    >
+      {items.map((d) => (
+        <option key={d.id} value={d.id} data-testid={`select-item-trip-${d.id}`}>
+          {d.challanNo} • {d.siteName} • {d.vehicleNo} • {d.status}
+        </option>
+      ))}
+    </select>
   );
 }

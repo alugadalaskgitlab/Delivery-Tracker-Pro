@@ -282,6 +282,8 @@ export default function AdminDashboard() {
   const [newTotalRequired, setNewTotalRequired] = useState("");
   const [newStatus, setNewStatus] = useState<PartyStatus>("ACTIVE");
 
+  const [lastCreatedChallan, setLastCreatedChallan] = useState<string>("");
+
   const shareBase = useMemo(() => {
     try {
       return `${window.location.origin}/site/`;
@@ -371,12 +373,18 @@ export default function AdminDashboard() {
     return true;
   }
 
+  function computeNextSeq(partyId: string) {
+    const persisted = (JSON.parse(localStorage.getItem("df_party_seq_v2") || "null") as Record<string, number> | null) ?? {};
+    const inMemory = seqByParty;
+    const current = Math.max(persisted[partyId] ?? 0, inMemory[partyId] ?? 0);
+    return current + 1;
+  }
+
   function onCreateDispatch() {
     if (!canCreateDispatch()) return;
 
     const p = partyById.get(dispatchPartyId)!;
-    const current = seqByParty[p.id] ?? 0;
-    const nextSeqForParty = current + 1;
+    const nextSeqForParty = computeNextSeq(p.id);
     const challanNo = formatChallan(p.partyCode, nextSeqForParty);
 
     const d: Dispatch = {
@@ -414,6 +422,9 @@ export default function AdminDashboard() {
     );
 
     persist(parties, nextDispatches, nextSeqByParty, nextNotifs);
+    setLastCreatedChallan(d.challanNo);
+
+    toast("Dispatch created", { description: `Challan ${d.challanNo}` });
 
     setSiteName("");
     setLoadMT("");
@@ -596,10 +607,15 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="hidden rounded-2xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground shadow-sm md:block">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-1">
                     <span data-testid="text-challan-format" className="font-mono">
                       PARTYCODE-0001
                     </span>
+                    {lastCreatedChallan ? (
+                      <span data-testid="text-last-created-challan" className="font-mono text-foreground">
+                        Last: {lastCreatedChallan}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1126,9 +1142,7 @@ export default function AdminDashboard() {
                               </div>
 
                               <div className="mt-2 text-xs text-muted-foreground">
-                                <span data-testid={`text-created-${d.id}`}>
-                                  Dispatched {format(d.createdAt, "dd MMM • HH:mm")}
-                                </span>
+                                <span data-testid={`text-created-${d.id}`}>Dispatched {format(d.createdAt, "dd MMM • HH:mm")}</span>
                                 {d.arrivedAt ? (
                                   <>
                                     <span className="mx-2">•</span>
@@ -1151,11 +1165,11 @@ export default function AdminDashboard() {
                                     toast("Link inactive", { description: "This party/order is inactive or closed." });
                                     return;
                                   }
-                                  setLocation(`/site/${p.accessId}`);
+                                  setLocation(`/site/${p.accessId}?dispatchId=${encodeURIComponent(d.id)}`);
                                 }}
                               >
                                 <Link2 className="h-4 w-4" />
-                                Site link
+                                Open trip
                               </Button>
                               <div
                                 className="rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground"
@@ -1169,10 +1183,7 @@ export default function AdminDashboard() {
                       ))}
 
                     {filtered.filter((d) => d.status !== "LEFT").length === 0 ? (
-                      <div
-                        className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center"
-                        data-testid="empty-active"
-                      >
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center" data-testid="empty-active">
                         <PackageOpen className="mx-auto h-10 w-10 text-muted-foreground" />
                         <div className="mt-3 font-serif text-lg">No active dispatches</div>
                         <div className="mt-1 text-sm text-muted-foreground">Create the first dispatch to start tracking.</div>
@@ -1226,10 +1237,7 @@ export default function AdminDashboard() {
                       ))}
 
                     {filtered.filter((d) => d.status === "LEFT").length === 0 ? (
-                      <div
-                        className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center"
-                        data-testid="empty-history"
-                      >
+                      <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center" data-testid="empty-history">
                         <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
                         <div className="mt-3 font-serif text-lg">No completed trips yet</div>
                         <div className="mt-1 text-sm text-muted-foreground">Completed dispatches will appear here.</div>
@@ -1245,11 +1253,7 @@ export default function AdminDashboard() {
                       const remaining = Math.max(0, p.totalRequiredMT - totals.dispatched);
                       const fulfilled = remaining <= 0;
                       return (
-                        <div
-                          key={p.id}
-                          className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm"
-                          data-testid={`card-report-${p.id}`}
-                        >
+                        <div key={p.id} className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm" data-testid={`card-report-${p.id}`}>
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <div data-testid={`text-report-party-${p.id}`} className="font-medium">
@@ -1311,7 +1315,7 @@ export default function AdminDashboard() {
                   data-testid="button-test-sound"
                   onClick={() => {
                     beep();
-                    notifyBrowser("Test alert", "Sound + browser notification (if enabled)." );
+                    notifyBrowser("Test alert", "Sound + browser notification (if enabled).");
                     toast("Test alert", { description: "Sound + toast (local preview)." });
                   }}
                 >
