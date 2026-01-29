@@ -6,10 +6,8 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL environment variable is not set");
 }
 
-const client = new pg.Client({
+const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-await client.connect();
-
-export const db = drizzle(client, { schema });
+export const db = drizzle(pool, { schema });
