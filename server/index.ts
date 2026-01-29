@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { storage } from "./storage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -60,6 +61,21 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Initialize default PINs if they don't exist
+  const defaultPins = [
+    { key: "admin_pin", value: "1234" },
+    { key: "plant_pin", value: "5678" },
+    { key: "owner_pin", value: "0000" },
+  ];
+
+  for (const { key, value } of defaultPins) {
+    const existing = await storage.getSetting(key);
+    if (!existing) {
+      await storage.setSetting(key, value);
+      log(`Initialized default ${key}`);
+    }
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

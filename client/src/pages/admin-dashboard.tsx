@@ -112,6 +112,7 @@ export default function AdminDashboard() {
   const [adminPin, setAdminPin] = useState("");
   const [plantPin, setPlantPin] = useState("");
   const [ownerPin, setOwnerPin] = useState("");
+  const [currentOwnerPinForSettings, setCurrentOwnerPinForSettings] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [ownerPinInput, setOwnerPinInput] = useState("");
   const [showOwnerPinDialog, setShowOwnerPinDialog] = useState(false);
@@ -342,34 +343,64 @@ export default function AdminDashboard() {
   }
 
   async function handleSaveSettings() {
+    if (!currentOwnerPinForSettings) {
+      toast({ title: "Error", description: "Current Owner PIN is required", variant: "destructive" });
+      return;
+    }
+
+    if (!adminPin && !plantPin && !ownerPin) {
+      toast({ title: "Error", description: "Enter at least one new PIN to change", variant: "destructive" });
+      return;
+    }
+
     setSavingSettings(true);
     try {
+      const errors: string[] = [];
+
       if (adminPin) {
-        await fetch("/api/settings/admin_pin", {
+        const res = await fetch("/api/settings/admin_pin", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: adminPin }),
+          body: JSON.stringify({ value: adminPin, ownerPin: currentOwnerPinForSettings }),
         });
+        if (!res.ok) {
+          const error = await res.json();
+          errors.push(error.error || "Failed to update Admin PIN");
+        }
       }
       if (plantPin) {
-        await fetch("/api/settings/plant_pin", {
+        const res = await fetch("/api/settings/plant_pin", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: plantPin }),
+          body: JSON.stringify({ value: plantPin, ownerPin: currentOwnerPinForSettings }),
         });
+        if (!res.ok) {
+          const error = await res.json();
+          errors.push(error.error || "Failed to update Plant PIN");
+        }
       }
       if (ownerPin) {
-        await fetch("/api/settings/owner_pin", {
+        const res = await fetch("/api/settings/owner_pin", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: ownerPin }),
+          body: JSON.stringify({ value: ownerPin, ownerPin: currentOwnerPinForSettings }),
         });
+        if (!res.ok) {
+          const error = await res.json();
+          errors.push(error.error || "Failed to update Owner PIN");
+        }
       }
-      toast({ title: "Success", description: "Settings saved successfully" });
-      setShowSettingsDialog(false);
-      setAdminPin("");
-      setPlantPin("");
-      setOwnerPin("");
+
+      if (errors.length > 0) {
+        toast({ title: "Error", description: errors[0], variant: "destructive" });
+      } else {
+        toast({ title: "Success", description: "Settings saved successfully" });
+        setShowSettingsDialog(false);
+        setAdminPin("");
+        setPlantPin("");
+        setOwnerPin("");
+        setCurrentOwnerPinForSettings("");
+      }
     } catch (error) {
       toast({ title: "Error", description: "Failed to save settings", variant: "destructive" });
     } finally {
@@ -957,13 +988,33 @@ export default function AdminDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
+      <Dialog open={showSettingsDialog} onOpenChange={(open) => {
+        if (!open) {
+          setAdminPin("");
+          setPlantPin("");
+          setOwnerPin("");
+          setCurrentOwnerPinForSettings("");
+        }
+        setShowSettingsDialog(open);
+      }}>
         <DialogContent data-testid="dialog-settings">
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
-            <DialogDescription>Change Admin and Plant PINs</DialogDescription>
+            <DialogDescription>Change PINs (Owner verification required)</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2 border-b pb-4">
+              <Label htmlFor="currentOwnerPinForSettings" className="font-semibold">Current Owner PIN *</Label>
+              <Input
+                id="currentOwnerPinForSettings"
+                type="password"
+                value={currentOwnerPinForSettings}
+                onChange={(e) => setCurrentOwnerPinForSettings(e.target.value)}
+                placeholder="Enter current Owner PIN to authorize"
+                data-testid="input-current-owner-pin"
+              />
+              <p className="text-xs text-muted-foreground">Required to make any PIN changes</p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="adminPin">New Admin PIN</Label>
               <Input
@@ -987,7 +1038,7 @@ export default function AdminDashboard() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ownerPin">New Owner PIN (for delete operations)</Label>
+              <Label htmlFor="ownerPin">New Owner PIN</Label>
               <Input
                 id="ownerPin"
                 type="password"
@@ -1002,7 +1053,7 @@ export default function AdminDashboard() {
             <Button variant="outline" onClick={() => setShowSettingsDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSaveSettings} disabled={savingSettings} data-testid="button-save-settings">
+            <Button onClick={handleSaveSettings} disabled={savingSettings || !currentOwnerPinForSettings} data-testid="button-save-settings">
               {savingSettings ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>

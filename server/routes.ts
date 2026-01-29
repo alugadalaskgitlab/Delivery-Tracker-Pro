@@ -172,10 +172,27 @@ export async function registerRoutes(
   app.put("/api/settings/:key", requireAdmin, async (req: Request, res: Response) => {
     try {
       const { key } = req.params;
-      const { value } = req.body;
+      const { value, ownerPin } = req.body;
 
       if (!value) {
         return res.status(400).json({ error: "Value required" });
+      }
+
+      // PIN changes require Owner PIN verification
+      const pinKeys = ["admin_pin", "plant_pin", "owner_pin"];
+      if (pinKeys.includes(key)) {
+        if (!ownerPin) {
+          return res.status(400).json({ error: "Owner PIN required to change PINs" });
+        }
+
+        const storedOwnerPin = await storage.getSetting("owner_pin");
+        if (!storedOwnerPin) {
+          return res.status(500).json({ error: "Owner PIN not configured" });
+        }
+
+        if (ownerPin !== storedOwnerPin) {
+          return res.status(401).json({ error: "Invalid Owner PIN" });
+        }
       }
 
       await storage.setSetting(key, value);
