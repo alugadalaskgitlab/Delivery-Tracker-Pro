@@ -1,18 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useRoute } from "wouter";
-import { Check, Clock, PackageCheck, ShieldAlert, Truck } from "lucide-react";
-import { format } from "date-fns";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
-
-type DispatchStatus = "DISPATCHED" | "ARRIVED" | "LEFT";
-
-type PartyStatus = "ACTIVE" | "INACTIVE" | "CLOSED";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { Loader2, PackageCheck, Truck } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Dispatch = {
   id: string;
@@ -20,702 +25,318 @@ type Dispatch = {
   partyId: string;
   partyName: string;
   partyCode: string;
-  orderRefNo?: string;
+  orderRefNo?: string | null;
   siteName: string;
   vehicleNo: string;
   loadMT: number;
-  createdAt: number;
-  status: DispatchStatus;
-  arrivedAt?: number;
-  leftAt?: number;
-  receivedMT?: number;
-  arrivedByName?: string;
-  leftByName?: string;
+  createdAt: string;
+  status: "DISPATCHED" | "ARRIVED" | "LEFT";
+  arrivedAt?: string | null;
+  leftAt?: string | null;
+  arrivedByName?: string | null;
+  leftByName?: string | null;
+  notes?: string | null;
 };
-
-type Party = {
-  id: string;
-  partyName: string;
-  partyCode: string;
-  orderRefNo?: string;
-  totalRequiredMT: number;
-  status: PartyStatus;
-  accessId: string;
-};
-
-type NotificationEvent = {
-  id: string;
-  ts: number;
-  side: "ADMIN" | "SITE";
-  title: string;
-  message: string;
-  dispatchId?: string;
-  partyId?: string;
-};
-
-function uid(prefix = "id") {
-  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-}
-
-function clampNum(v: string) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.round(n * 100) / 100);
-}
-
-function beep() {
-  try {
-    const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
-    const ctx = new AudioCtx();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = "triangle";
-    o.frequency.value = 740;
-    g.gain.value = 0.0001;
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.start();
-    g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime + 0.01);
-    o.frequency.exponentialRampToValueAtTime(520, ctx.currentTime + 0.16);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.36);
-    o.stop(ctx.currentTime + 0.38);
-    setTimeout(() => ctx.close().catch(() => {}), 600);
-  } catch {
-    // ignore
-  }
-}
-
-function notifyBrowser(title: string, body: string) {
-  try {
-    if (!("Notification" in window)) return;
-    if (Notification.permission !== "granted") return;
-    // eslint-disable-next-line no-new
-    new Notification(title, { body, silent: false });
-  } catch {
-    // ignore
-  }
-}
-
-function pushNotification(
-  side: "ADMIN" | "SITE",
-  title: string,
-  message: string,
-  prev: NotificationEvent[],
-  meta?: Partial<Pick<NotificationEvent, "dispatchId" | "partyId">>,
-) {
-  const entry: NotificationEvent = {
-    id: uid("notif"),
-    ts: Date.now(),
-    side,
-    title,
-    message,
-    dispatchId: meta?.dispatchId,
-    partyId: meta?.partyId,
-  };
-
-  const next = [entry, ...prev].slice(0, 200);
-  localStorage.setItem("df_notifications_v2", JSON.stringify(next));
-
-  if (side === "SITE") {
-    toast(title, { description: message });
-  }
-
-  beep();
-  notifyBrowser(title, message);
-
-  try {
-    window.dispatchEvent(new CustomEvent("df:notify", { detail: entry }));
-  } catch {
-    // ignore
-  }
-
-  return next;
-}
-
-function loadState() {
-  const partiesKey = "df_parties_v2";
-  const dispatchesKey = "df_dispatches_v2";
-  const notifsKey = "df_notifications_v2";
-
-  const parties = (JSON.parse(localStorage.getItem(partiesKey) || "null") as Party[] | null) ?? [];
-  const dispatches = (JSON.parse(localStorage.getItem(dispatchesKey) || "null") as Dispatch[] | null) ?? [];
-  const notifications = (JSON.parse(localStorage.getItem(notifsKey) || "null") as NotificationEvent[] | null) ?? [];
-
-  return { parties, dispatches, notifications };
-}
-
-function saveDispatches(dispatches: Dispatch[]) {
-  localStorage.setItem("df_dispatches_v2", JSON.stringify(dispatches));
-}
-
-function statusBadge(status: DispatchStatus) {
-  if (status === "DISPATCHED") {
-    return (
-      <Badge data-testid="badge-status-dispatched" className="bg-primary/10 text-primary border-primary/20">
-        DISPATCHED
-      </Badge>
-    );
-  }
-  if (status === "ARRIVED") {
-    return (
-      <Badge data-testid="badge-status-arrived" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">
-        ARRIVED
-      </Badge>
-    );
-  }
-  return (
-    <Badge data-testid="badge-status-left" className="bg-slate-500/10 text-slate-700 border-slate-500/20">
-      LEFT
-    </Badge>
-  );
-}
 
 export default function SiteDispatch() {
-  const [, params] = useRoute("/site/:accessId");
-  const [, setLocation] = useLocation();
+  const { user, logout, partyId } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const accessId = params?.accessId ?? "";
+  const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null);
+  const [action, setAction] = useState<"arrived" | "left" | null>(null);
+  const [receiverName, setReceiverName] = useState("");
 
-  const [{ parties: initialParties, dispatches: initialDispatches, notifications: initialNotifications }] = useState(() =>
-    loadState(),
-  );
-  const [parties, setParties] = useState<Party[]>(initialParties);
-  const [dispatches, setDispatches] = useState<Dispatch[]>(initialDispatches);
-  const [notifications, setNotifications] = useState<NotificationEvent[]>(initialNotifications);
+  const { data: dispatches = [], isLoading } = useQuery<Dispatch[]>({
+    queryKey: ["/api/dispatches"],
+    queryFn: async () => {
+      const res = await fetch("/api/dispatches");
+      if (!res.ok) throw new Error("Failed to fetch dispatches");
+      return res.json();
+    },
+    refetchInterval: 5000,
+  });
 
-  const party = useMemo(() => parties.find((p) => p.accessId === accessId), [parties, accessId]);
+  const acknowledgeMutation = useMutation({
+    mutationFn: async ({ id, action, name }: { id: string; action: "arrived" | "left"; name: string }) => {
+      const endpoint = action === "arrived" ? `/api/dispatches/${id}/arrived` : `/api/dispatches/${id}/left`;
+      const body = action === "arrived" ? { arrivedByName: name } : { leftByName: name };
 
-  const partyDispatches = useMemo(
-    () =>
-      dispatches
-        .filter((d) => d.partyId === party?.id)
-        .slice()
-        .sort((a, b) => b.createdAt - a.createdAt),
-    [dispatches, party?.id],
-  );
+      const res = await fetch(endpoint, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
 
-  const [selectedDispatchId, setSelectedDispatchId] = useState<string>("");
-
-  useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
-    const fromQuery = sp.get("dispatchId") || "";
-    if (fromQuery && partyDispatches.some((d) => d.id === fromQuery)) {
-      setSelectedDispatchId(fromQuery);
-      return;
-    }
-    if (!selectedDispatchId) {
-      const firstPending = partyDispatches.find((d) => d.status !== "LEFT")?.id;
-      setSelectedDispatchId(firstPending ?? partyDispatches[0]?.id ?? "");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partyDispatches.length, party?.id]);
-
-  const selected = useMemo(
-    () => partyDispatches.find((d) => d.id === selectedDispatchId) ?? null,
-    [partyDispatches, selectedDispatchId],
-  );
-
-  const [arrivedName, setArrivedName] = useState("");
-  const [receivedMT, setReceivedMT] = useState("");
-  const [leftName, setLeftName] = useState("");
-
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "df_parties_v2" || e.key === "df_dispatches_v2" || e.key === "df_notifications_v2") {
-        const s = loadState();
-        setParties(s.parties);
-        setDispatches(s.dispatches);
-        setNotifications(s.notifications);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Acknowledgement failed");
       }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
 
-  function persist(nextDispatches: Dispatch[], nextNotifs: NotificationEvent[]) {
-    setDispatches(nextDispatches);
-    setNotifications(nextNotifs);
-    saveDispatches(nextDispatches);
-    localStorage.setItem("df_notifications_v2", JSON.stringify(nextNotifs));
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
+      setSelectedDispatch(null);
+      setAction(null);
+      setReceiverName("");
+      
+      toast({
+        title: "Success",
+        description: `Marked as ${variables.action === "arrived" ? "ARRIVED" : "LEFT"}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  function handleAcknowledge(dispatch: Dispatch, type: "arrived" | "left") {
+    setSelectedDispatch(dispatch);
+    setAction(type);
+    setReceiverName("");
   }
 
-  function acknowledgeArrived(target: Dispatch) {
-    if (!party) return;
-    if (party.status !== "ACTIVE") return;
-    if (target.status !== "DISPATCHED") return;
-
-    const name = arrivedName.trim();
-    const qty = clampNum(receivedMT);
-    if (!name) {
-      toast("Name required", { description: "Please enter your name to confirm arrival." });
-      return;
-    }
-    if (qty <= 0) {
-      toast("Quantity required", { description: "Enter received quantity in MT." });
-      return;
-    }
-
-    const nextDispatches = dispatches.map((d) =>
-      d.id === target.id
-        ? {
-            ...d,
-            status: "ARRIVED" as const,
-            arrivedAt: Date.now(),
-            receivedMT: qty,
-            arrivedByName: name,
-          }
-        : d,
-    );
-
-    let nextNotifs = notifications;
-    nextNotifs = pushNotification(
-      "SITE",
-      "Arrival confirmed",
-      `${target.challanNo} • Received ${qty.toFixed(2)} MT`,
-      nextNotifs,
-      { dispatchId: target.id, partyId: target.partyId },
-    );
-    nextNotifs = pushNotification(
-      "ADMIN",
-      "Truck arrived",
-      `${target.challanNo} arrived • Received ${qty.toFixed(2)} MT • By ${name}`,
-      nextNotifs,
-      { dispatchId: target.id, partyId: target.partyId },
-    );
-
-    persist(nextDispatches, nextNotifs);
-
-    setArrivedName("");
-    setReceivedMT("");
-  }
-
-  function acknowledgeLeft(target: Dispatch) {
-    if (!party) return;
-    if (party.status !== "ACTIVE") return;
-    if (target.status !== "ARRIVED") return;
-
-    const name = leftName.trim();
-    if (!name) {
-      toast("Name required", { description: "Please enter your name to confirm departure." });
+  function handleSubmit() {
+    if (!selectedDispatch || !action || !receiverName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Receiver name is required",
+        variant: "destructive",
+      });
       return;
     }
 
-    const nextDispatches = dispatches.map((d) =>
-      d.id === target.id
-        ? {
-            ...d,
-            status: "LEFT" as const,
-            leftAt: Date.now(),
-            leftByName: name,
-          }
-        : d,
-    );
-
-    let nextNotifs = notifications;
-    nextNotifs = pushNotification(
-      "SITE",
-      "Departure confirmed",
-      `${target.challanNo} • Truck left the site`,
-      nextNotifs,
-      { dispatchId: target.id, partyId: target.partyId },
-    );
-    nextNotifs = pushNotification(
-      "ADMIN",
-      "Truck left",
-      `${target.challanNo} left • Confirmed by ${name}`,
-      nextNotifs,
-      { dispatchId: target.id, partyId: target.partyId },
-    );
-
-    persist(nextDispatches, nextNotifs);
-
-    setLeftName("");
+    acknowledgeMutation.mutate({
+      id: selectedDispatch.id,
+      action,
+      name: receiverName.trim(),
+    });
   }
 
-  if (!party) {
-    return (
-      <div className="min-h-screen df-grid p-4">
-        <div className="mx-auto w-full max-w-xl">
-          <Card className="df-card p-6">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-destructive/10 text-destructive ring-1 ring-destructive/20">
-                <ShieldAlert className="h-5 w-5" />
-              </div>
-              <div>
-                <div data-testid="text-site-invalid-title" className="font-serif text-xl">
-                  Invalid link
-                </div>
-                <div data-testid="text-site-invalid-subtitle" className="text-sm text-muted-foreground">
-                  This access link does not match any party/order.
-                </div>
-              </div>
-            </div>
-
-            <Separator className="my-4" />
-
-            <div className="text-sm text-muted-foreground">
-              If you believe this is a mistake, ask the plant/admin team to share a valid link.
-            </div>
-
-            <div className="mt-4">
-              <Link href="/admin" data-testid="link-back-admin" className="underline underline-offset-4">
-                Go to admin
-              </Link>
-            </div>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  if (party.status !== "ACTIVE") {
-    return (
-      <div className="min-h-screen df-grid p-4">
-        <div className="mx-auto w-full max-w-xl">
-          <Card className="df-card p-6">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-slate-500/10 text-slate-700 ring-1 ring-slate-500/20">
-                <ShieldAlert className="h-5 w-5" />
-              </div>
-              <div>
-                <div data-testid="text-site-closed-title" className="font-serif text-xl">
-                  Access closed
-                </div>
-                <div data-testid="text-site-closed-subtitle" className="text-sm text-muted-foreground">
-                  This party/order is not active. You can no longer view or act from this link.
-                </div>
-              </div>
-            </div>
-
-            <Separator className="my-4" />
-
-            <div className="text-sm text-muted-foreground">Please contact the admin team if you need a report or reconciliation.</div>
-
-            <div className="mt-4">
-              <Button data-testid="button-go-admin" variant="secondary" onClick={() => setLocation("/admin")}>
-                Go to admin dashboard
-              </Button>
-            </div>
-          </Card>
-        </div>
-      </div>
-    );
-  }
+  const dispatchedCount = dispatches.filter((d) => d.status === "DISPATCHED").length;
+  const arrivedCount = dispatches.filter((d) => d.status === "ARRIVED").length;
+  const leftCount = dispatches.filter((d) => d.status === "LEFT").length;
 
   return (
-    <div className="min-h-screen df-grid">
-      <header className="sticky top-0 z-30 border-b border-border/70 bg-background/70 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
-              <Truck className="h-5 w-5" strokeWidth={2} />
-            </div>
-            <div>
-              <div data-testid="text-site-title" className="font-serif text-[18px] leading-none">
-                Site Acknowledgement
-              </div>
-              <div data-testid="text-site-project" className="text-xs text-muted-foreground">
-                {party.partyCode} • {party.partyName}
-              </div>
-            </div>
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">Site Dispatch Tracking</h1>
+            <p className="text-sm text-gray-600">{user?.displayName}</p>
           </div>
-
-          <div className="ml-auto">
-            <Link href="/admin" data-testid="link-admin" className="text-xs text-muted-foreground underline underline-offset-4">
-              Admin
-            </Link>
-          </div>
+          <Button variant="outline" onClick={logout} data-testid="button-logout">
+            Logout
+          </Button>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl px-4 py-6">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <section className="lg:col-span-7">
-            <Card className="df-card p-5">
-              <div className="flex items-start justify-between gap-4">
+      <main className="container mx-auto px-4 py-8 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <div className="grid h-9 w-9 place-items-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/20">
-                      <PackageCheck className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h1 data-testid="text-site-active-title" className="font-serif text-xl">
-                        Dispatch acknowledgements
-                      </h1>
-                      <p data-testid="text-site-active-subtitle" className="text-sm text-muted-foreground">
-                        Select a trip, then confirm ARRIVED and LEFT per trip.
-                      </p>
-                    </div>
-                  </div>
+                  <p className="text-sm text-gray-600">In Transit</p>
+                  <p className="text-3xl font-bold">{dispatchedCount}</p>
                 </div>
-                <div className="rounded-2xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    <span data-testid="text-site-now">{format(Date.now(), "dd MMM • HH:mm")}</span>
-                  </div>
-                </div>
+                <Truck className="h-8 w-8 text-blue-500" />
               </div>
+            </CardContent>
+          </Card>
 
-              <Separator className="my-4" />
-
-              {partyDispatches.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center" data-testid="empty-site">
-                  <Truck className="mx-auto h-10 w-10 text-muted-foreground" />
-                  <div className="mt-3 font-serif text-lg">No dispatches yet</div>
-                  <div className="mt-1 text-sm text-muted-foreground">Wait for the plant/admin team to create a dispatch.</div>
-                </div>
-              ) : (
-                <div className="space-y-4" data-testid="panel-site-active">
-                  <div className="space-y-2">
-                    <Label data-testid="label-select-trip" htmlFor="trip">
-                      Select trip\n                    </Label>
-                    <SelectTrip
-                      items={partyDispatches}
-                      value={selectedDispatchId}
-                      onChange={setSelectedDispatchId}
-                    />
-                  </div>
-
-                  {!selected ? (
-                    <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-8 text-center text-sm text-muted-foreground" data-testid="empty-selected">
-                      Select a trip to proceed.
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div data-testid="text-site-challan" className="font-mono text-xs text-muted-foreground">
-                          {selected.challanNo}
-                        </div>
-                        {statusBadge(selected.status)}
-                        <Badge className="df-pill" variant="secondary" data-testid="badge-site-vehicle">
-                          <Truck className="mr-1 h-3.5 w-3.5" />
-                          {selected.vehicleNo}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-2 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
-                        <div data-testid="text-site-party">
-                          <span className="text-muted-foreground">Party:</span> {selected.partyName} ({selected.partyCode})
-                        </div>
-                        <div data-testid="text-site-site">
-                          <span className="text-muted-foreground">Site:</span> {selected.siteName}
-                        </div>
-                        <div data-testid="text-site-load">
-                          <span className="text-muted-foreground">Load:</span> {selected.loadMT.toFixed(2)} MT
-                        </div>
-                        <div data-testid="text-site-dispatched-at">
-                          <span className="text-muted-foreground">Dispatched:</span> {format(selected.createdAt, "dd MMM • HH:mm")}
-                        </div>
-                      </div>
-
-                      {selected.arrivedAt ? (
-                        <div className="mt-3 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">
-                          <div data-testid="text-site-arrived-line">
-                            Arrived {format(selected.arrivedAt, "dd MMM • HH:mm")} • By {selected.arrivedByName} • Received {(selected.receivedMT ?? 0).toFixed(2)} MT
-                          </div>
-                        </div>
-                      ) : null}
-                      {selected.leftAt ? (
-                        <div className="mt-3 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">
-                          <div data-testid="text-site-left-line">Left {format(selected.leftAt, "dd MMM • HH:mm")} • By {selected.leftByName}</div>
-                        </div>
-                      ) : null}
-
-                      {selected.status === "DISPATCHED" ? (
-                        <div className="mt-4 rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
-                          <div className="text-sm font-medium" data-testid="text-arrival-form-title">
-                            Arrival acknowledgement
-                          </div>
-                          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <div className="space-y-2">
-                              <Label htmlFor="arrivedName" data-testid="label-arrived-name">
-                                Your name (required)
-                              </Label>
-                              <Input
-                                id="arrivedName"
-                                value={arrivedName}
-                                onChange={(e) => setArrivedName(e.target.value)}
-                                placeholder="e.g., Rakesh"
-                                data-testid="input-arrived-name"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="received" data-testid="label-received-mt">
-                                Received quantity (MT)
-                              </Label>
-                              <Input
-                                id="received"
-                                value={receivedMT}
-                                onChange={(e) => setReceivedMT(e.target.value)}
-                                inputMode="decimal"
-                                placeholder="e.g., 18.2"
-                                data-testid="input-received-mt"
-                              />
-                            </div>
-                          </div>
-                          <Button
-                            className="mt-4 w-full gap-2"
-                            onClick={() => acknowledgeArrived(selected)}
-                            data-testid="button-confirm-arrived"
-                          >
-                            <Check className="h-4 w-4" />
-                            Confirm arrived
-                          </Button>
-                        </div>
-                      ) : null}
-
-                      {selected.status === "ARRIVED" ? (
-                        <div className="mt-4 rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
-                          <div className="text-sm font-medium" data-testid="text-left-form-title">
-                            Departure acknowledgement
-                          </div>
-                          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <div className="space-y-2">
-                              <Label htmlFor="leftName" data-testid="label-left-name">
-                                Your name (required)
-                              </Label>
-                              <Input
-                                id="leftName"
-                                value={leftName}
-                                onChange={(e) => setLeftName(e.target.value)}
-                                placeholder="e.g., Suresh"
-                                data-testid="input-left-name"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="leftTime" data-testid="label-left-time">
-                                Left time (auto)
-                              </Label>
-                              <Input id="leftTime" readOnly value={format(Date.now(), "dd MMM • HH:mm")} data-testid="input-left-time" />
-                            </div>
-                          </div>
-                          <Button className="mt-4 w-full gap-2" onClick={() => acknowledgeLeft(selected)} data-testid="button-confirm-left">
-                            <Check className="h-4 w-4" />
-                            Confirm truck left
-                          </Button>
-                        </div>
-                      ) : null}
-
-                      {selected.status === "LEFT" ? (
-                        <div className="mt-4 rounded-2xl border border-border/70 bg-emerald-500/10 p-4 text-sm text-emerald-800" data-testid="text-site-complete">
-                          This trip is completed.
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-              )}
-            </Card>
-          </section>
-
-          <section className="lg:col-span-5">
-            <Card className="df-card p-5">
-              <div className="flex items-start justify-between gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
                 <div>
-                  <h2 data-testid="text-site-history-title" className="font-serif text-lg">
-                    All trips\n                  </h2>
-                  <p data-testid="text-site-history-subtitle" className="text-sm text-muted-foreground">
-                    Each challan remains selectable and can be acknowledged independently.
-                  </p>
+                  <p className="text-sm text-gray-600">Arrived</p>
+                  <p className="text-3xl font-bold">{arrivedCount}</p>
                 </div>
-                <Badge className="df-pill" variant="secondary" data-testid="badge-site-project">
-                  {partyDispatches.length} trips
-                </Badge>
+                <PackageCheck className="h-8 w-8 text-yellow-500" />
               </div>
+            </CardContent>
+          </Card>
 
-              <Separator className="my-4" />
-
-              <div className="space-y-3">
-                {partyDispatches.map((d) => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    className={`w-full rounded-2xl border border-border/70 bg-card/60 p-4 text-left text-sm shadow-sm transition hover:shadow-md ${
-                      d.id === selectedDispatchId ? "ring-2 ring-primary/30" : ""
-                    }`}
-                    onClick={() => setSelectedDispatchId(d.id)}
-                    data-testid={`button-select-trip-${d.id}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div data-testid={`text-site-history-challan-${d.id}`} className="font-mono text-xs text-muted-foreground">
-                          {d.challanNo}
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          {statusBadge(d.status)}
-                          <Badge className="df-pill" variant="secondary" data-testid={`badge-site-history-vehicle-${d.id}`}>
-                            <Truck className="mr-1 h-3.5 w-3.5" />
-                            {d.vehicleNo}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="text-right text-xs text-muted-foreground">
-                        <div data-testid={`text-site-history-load-${d.id}`}>Load {d.loadMT.toFixed(2)} MT</div>
-                        <div data-testid={`text-site-history-time-${d.id}`}>{format(d.createdAt, "dd MMM • HH:mm")}</div>
-                      </div>
-                    </div>
-
-                    {d.arrivedAt ? (
-                      <div className="mt-3 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">
-                        <div data-testid={`text-site-history-arrived-${d.id}`}>
-                          Arrived {format(d.arrivedAt, "HH:mm")} • {d.arrivedByName} • Rec {(d.receivedMT ?? 0).toFixed(2)} MT
-                        </div>
-                      </div>
-                    ) : null}
-                    {d.leftAt ? (
-                      <div className="mt-2 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">
-                        <div data-testid={`text-site-history-left-${d.id}`}>Left {format(d.leftAt, "HH:mm")} • {d.leftByName}</div>
-                      </div>
-                    ) : null}
-                  </button>
-                ))}
-
-                {partyDispatches.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center" data-testid="empty-site-history">
-                    <Truck className="mx-auto h-10 w-10 text-muted-foreground" />
-                    <div className="mt-3 font-serif text-lg">No dispatches yet</div>
-                    <div className="mt-1 text-sm text-muted-foreground">This party/order has no challans created in this browser.</div>
-                  </div>
-                ) : null}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Completed</p>
+                  <p className="text-3xl font-bold">{leftCount}</p>
+                </div>
+                <PackageCheck className="h-8 w-8 text-green-500" />
               </div>
-            </Card>
-
-            <Card className="df-card mt-6 p-5">
-              <div className="text-sm font-medium" data-testid="text-site-notice-title">
-                Notifications (preview mode)
-              </div>
-              <div className="mt-2 text-sm text-muted-foreground" data-testid="text-site-notice">
-                This page triggers sound + in-app notifications; enable browser notifications in the Admin tab for system alerts.
-              </div>
-            </Card>
-          </section>
+            </CardContent>
+          </Card>
         </div>
-      </main>
-    </div>
-  );
-}
 
-function SelectTrip({
-  items,
-  value,
-  onChange,
-}: {
-  items: Dispatch[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <select
-      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      data-testid="select-trip"
-    >
-      {items.map((d) => (
-        <option key={d.id} value={d.id} data-testid={`select-item-trip-${d.id}`}>
-          {d.challanNo} • {d.siteName} • {d.vehicleNo} • {d.status}
-        </option>
-      ))}
-    </select>
+        <Card>
+          <CardHeader>
+            <CardTitle>Dispatches</CardTitle>
+            <CardDescription>Track and acknowledge incoming deliveries</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Challan No</TableHead>
+                    <TableHead>Site</TableHead>
+                    <TableHead>Vehicle</TableHead>
+                    <TableHead>Load (MT)</TableHead>
+                    <TableHead>Dispatched</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dispatches.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+                        No dispatches found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    dispatches.map((dispatch) => (
+                      <TableRow key={dispatch.id} data-testid={`row-dispatch-${dispatch.id}`}>
+                        <TableCell className="font-medium">{dispatch.challanNo}</TableCell>
+                        <TableCell>{dispatch.siteName}</TableCell>
+                        <TableCell>{dispatch.vehicleNo}</TableCell>
+                        <TableCell>{dispatch.loadMT.toFixed(2)}</TableCell>
+                        <TableCell>{format(new Date(dispatch.createdAt), "dd MMM HH:mm")}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              dispatch.status === "LEFT"
+                                ? "default"
+                                : dispatch.status === "ARRIVED"
+                                ? "secondary"
+                                : "outline"
+                            }
+                            data-testid={`badge-status-${dispatch.id}`}
+                          >
+                            {dispatch.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            {dispatch.status === "DISPATCHED" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                data-testid={`button-arrived-${dispatch.id}`}
+                                onClick={() => handleAcknowledge(dispatch, "arrived")}
+                              >
+                                Mark Arrived
+                              </Button>
+                            )}
+                            {dispatch.status === "ARRIVED" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                data-testid={`button-left-${dispatch.id}`}
+                                onClick={() => handleAcknowledge(dispatch, "left")}
+                              >
+                                Mark Left
+                              </Button>
+                            )}
+                            {dispatch.status === "LEFT" && (
+                              <span className="text-sm text-gray-500">Completed</span>
+                            )}
+                          </div>
+                          {dispatch.arrivedByName && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Received by: {dispatch.arrivedByName}
+                            </div>
+                          )}
+                          {dispatch.leftByName && dispatch.status === "LEFT" && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Left with: {dispatch.leftByName}
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </main>
+
+      <Dialog open={!!action} onOpenChange={() => { setAction(null); setSelectedDispatch(null); setReceiverName(""); }}>
+        <DialogContent data-testid="dialog-acknowledge">
+          <DialogHeader>
+            <DialogTitle>
+              {action === "arrived" ? "Mark as Arrived" : "Mark as Left"}
+            </DialogTitle>
+            <DialogDescription>
+              {action === "arrived"
+                ? "Acknowledge that this delivery has arrived at your site"
+                : "Acknowledge that the vehicle has left your site"}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedDispatch && (
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-4 rounded-md space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Challan No:</span>
+                  <span className="font-medium">{selectedDispatch.challanNo}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Vehicle:</span>
+                  <span className="font-medium">{selectedDispatch.vehicleNo}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Load:</span>
+                  <span className="font-medium">{selectedDispatch.loadMT.toFixed(2)} MT</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="receiverName">Receiver Name *</Label>
+                <Input
+                  id="receiverName"
+                  data-testid="input-receiver-name"
+                  value={receiverName}
+                  onChange={(e) => setReceiverName(e.target.value)}
+                  placeholder="Enter receiver name"
+                  autoFocus
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setAction(null); setSelectedDispatch(null); setReceiverName(""); }}
+              data-testid="button-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={acknowledgeMutation.isPending || !receiverName.trim()}
+              data-testid="button-confirm"
+            >
+              {acknowledgeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
