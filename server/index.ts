@@ -61,7 +61,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Initialize default PINs if they don't exist
+  // Force reset PINs to defaults on every startup (ensures production has correct PINs)
   const defaultPins = [
     { key: "admin_pin", value: "1234" },
     { key: "plant_pin", value: "5678" },
@@ -69,11 +69,8 @@ app.use((req, res, next) => {
   ];
 
   for (const { key, value } of defaultPins) {
-    const existing = await storage.getSetting(key);
-    if (!existing) {
-      await storage.setSetting(key, value);
-      log(`Initialized default ${key}`);
-    }
+    await storage.setSetting(key, value);
+    log(`Reset ${key} to default`);
   }
 
   await registerRoutes(httpServer, app);
