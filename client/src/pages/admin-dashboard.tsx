@@ -93,6 +93,7 @@ export default function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [mixTypeFilter, setMixTypeFilter] = useState<string>("all");
+  const [partyFilter, setPartyFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -340,6 +341,7 @@ export default function AdminDashboard() {
       const party = parties.find((p) => p.id === d.partyId);
       const matchesStatus = statusFilter === "all" || d.status === statusFilter;
       const matchesMixType = mixTypeFilter === "all" || (party && party.mixType === mixTypeFilter);
+      const matchesParty = partyFilter === "all" || d.partyId === partyFilter;
 
       let matchesDate = true;
       if (dateFrom) {
@@ -349,9 +351,9 @@ export default function AdminDashboard() {
         matchesDate = matchesDate && new Date(d.createdAt) <= new Date(dateTo + "T23:59:59");
       }
 
-      return matchesSearch && matchesStatus && matchesMixType && matchesDate;
+      return matchesSearch && matchesStatus && matchesMixType && matchesParty && matchesDate;
     });
-  }, [dispatches, parties, searchQuery, statusFilter, mixTypeFilter, dateFrom, dateTo]);
+  }, [dispatches, parties, searchQuery, statusFilter, mixTypeFilter, partyFilter, dateFrom, dateTo]);
 
   const summaryStats = useMemo(() => {
     const totalParties = parties.length;
@@ -361,7 +363,9 @@ export default function AdminDashboard() {
     return { totalParties, activeParties, totalDispatched, pendingAcknowledgement };
   }, [parties, dispatches]);
 
-  function exportToCSV() {
+  async function exportToExcel() {
+    const XLSX = await import("xlsx");
+    
     const headers = ["Challan No", "Party", "Mix Type", "Site", "Vehicle", "Load (MT)", "Date", "Status", "Arrived By", "Left By"];
     const rows = filteredDispatches.map((d) => {
       const party = parties.find((p) => p.id === d.partyId);
@@ -371,7 +375,7 @@ export default function AdminDashboard() {
         party?.mixType || "",
         d.siteName,
         d.vehicleNo,
-        d.loadMT,
+        Number(d.loadMT),
         format(new Date(d.createdAt), "dd/MM/yyyy HH:mm"),
         d.status,
         d.arrivedByName || "",
@@ -379,14 +383,11 @@ export default function AdminDashboard() {
       ];
     });
 
-    const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c}"`).join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `dispatches_${format(new Date(), "yyyyMMdd_HHmmss")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Dispatches");
+    
+    XLSX.writeFile(workbook, `dispatches_${format(new Date(), "yyyyMMdd_HHmmss")}.xlsx`);
   }
 
   function handlePrint() {
@@ -665,11 +666,25 @@ export default function AdminDashboard() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div>
+                    <Label>Party</Label>
+                    <Select value={partyFilter} onValueChange={setPartyFilter}>
+                      <SelectTrigger data-testid="select-report-party">
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Parties</SelectItem>
+                        {parties.map((party) => (
+                          <SelectItem key={party.id} value={party.id}>{party.partyName} ({party.partyCode})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="flex justify-end gap-2 mt-4">
-                  <Button variant="outline" onClick={exportToCSV} data-testid="button-export-csv">
+                  <Button variant="outline" onClick={exportToExcel} data-testid="button-export-excel">
                     <Download className="h-4 w-4 mr-2" />
-                    Export CSV
+                    Export Excel
                   </Button>
                   <Button variant="outline" onClick={handlePrint} data-testid="button-print">
                     <Printer className="h-4 w-4 mr-2" />

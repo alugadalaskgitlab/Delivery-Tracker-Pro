@@ -307,7 +307,7 @@ export async function registerRoutes(
       }
 
       if (req.session.role === "PLANT") {
-        const dispatches = await storage.getDispatchesByCreator(req.session.userId!);
+        const dispatches = await storage.getDispatches();
         return res.json(dispatches);
       }
 
@@ -341,7 +341,7 @@ export async function registerRoutes(
         partyName: party.partyName,
         partyCode: party.partyCode,
         orderRefNo: party.orderRefNo,
-        createdBy: req.session.userId,
+        createdBy: null,
       });
 
       return res.json(dispatch);

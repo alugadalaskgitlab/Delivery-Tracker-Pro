@@ -136,11 +136,25 @@ export default function PlantDispatch() {
       return;
     }
 
+    const party = parties.find((p) => p.id === partyId);
+    if (!party) {
+      toast({
+        title: "Error",
+        description: "Selected party not found",
+        variant: "destructive",
+      });
+      return;
+    }
+
     createMutation.mutate({
       partyId,
+      partyName: party.partyName,
+      partyCode: party.partyCode,
+      orderRefNo: party.orderRefNo || undefined,
       siteName: siteName.trim().toUpperCase(),
       vehicleNo: vehicleNo.trim().toUpperCase(),
-      loadMT: loadNum,
+      loadMT: String(loadNum),
+      status: "DISPATCHED",
       notes: notes.trim() || undefined,
     });
   };
