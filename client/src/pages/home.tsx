@@ -62,7 +62,7 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-gray-100 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">DispatchFlow</h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">DispatchPro</h1>
           <p className="text-lg text-gray-600">Material Dispatch Management System</p>
         </div>
 
@@ -76,12 +76,8 @@ export default function Home() {
               <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
                 <Shield className="w-8 h-8 text-blue-600" />
               </div>
-              <CardTitle>Admin</CardTitle>
-              <CardDescription>Full access to all features</CardDescription>
+              <CardTitle>Command Center</CardTitle>
             </CardHeader>
-            <CardContent className="text-center text-sm text-gray-500">
-              Manage parties, view all dispatches, export data, reconcile orders
-            </CardContent>
           </Card>
 
           <Card 
@@ -93,12 +89,8 @@ export default function Home() {
               <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
                 <Factory className="w-8 h-8 text-green-600" />
               </div>
-              <CardTitle>Plant</CardTitle>
-              <CardDescription>Dispatch entry access</CardDescription>
+              <CardTitle>Dispatch Desk</CardTitle>
             </CardHeader>
-            <CardContent className="text-center text-sm text-gray-500">
-              Create dispatches, view own dispatch summary, track acknowledgements
-            </CardContent>
           </Card>
         </div>
       </div>
@@ -107,7 +99,7 @@ export default function Home() {
         <DialogContent data-testid="dialog-pin">
           <DialogHeader>
             <DialogTitle>
-              {selectedRole === "admin" ? "Admin Access" : "Plant Access"}
+              {selectedRole === "admin" ? "Command Center Access" : "Dispatch Desk Access"}
             </DialogTitle>
             <DialogDescription>
               Enter your PIN to continue
