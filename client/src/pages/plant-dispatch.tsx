@@ -18,7 +18,8 @@ type Party = {
   partyName: string;
   partyCode: string;
   orderRefNo?: string | null;
-  totalRequiredMT: number;
+  mixType?: string;
+  totalRequiredMT: string;
   status: "ACTIVE" | "INACTIVE" | "CLOSED";
 };
 
@@ -31,7 +32,7 @@ type Dispatch = {
   orderRefNo?: string | null;
   siteName: string;
   vehicleNo: string;
-  loadMT: number;
+  loadMT: string;
   createdAt: string;
   status: "DISPATCHED" | "ARRIVED" | "LEFT";
   arrivedAt?: string | null;
@@ -145,12 +146,13 @@ export default function PlantDispatch() {
   };
 
   const selectedParty = parties.find((p) => p.id === partyId);
-  const balanceMT = useMemo(() => {
-    if (!selectedParty) return 0;
+  const partyStats = useMemo(() => {
+    if (!selectedParty) return { dispatched: 0, balance: 0 };
     const dispatched = dispatches
       .filter((d) => d.partyId === selectedParty.id)
-      .reduce((sum, d) => sum + d.loadMT, 0);
-    return selectedParty.totalRequiredMT - dispatched;
+      .reduce((sum, d) => sum + Number(d.loadMT), 0);
+    const balance = Number(selectedParty.totalRequiredMT) - dispatched;
+    return { dispatched, balance };
   }, [selectedParty, dispatches]);
 
   const activeParties = parties.filter((p) => p.status === "ACTIVE");
@@ -198,15 +200,27 @@ export default function PlantDispatch() {
                 </div>
 
                 {selectedParty && (
-                  <div className="space-y-2">
-                    <Label>Balance Quantity</Label>
-                    <div className="h-10 px-3 py-2 border rounded-md bg-gray-50">
-                      <span className={`font-semibold ${balanceMT < 0 ? "text-red-600" : "text-green-600"}`}>
-                        {balanceMT.toFixed(2)} MT
-                      </span>
-                      <span className="text-sm text-gray-500 ml-2">
-                        (Total: {selectedParty.totalRequiredMT} MT)
-                      </span>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Party Details</Label>
+                    <div className="p-4 border rounded-md bg-blue-50 grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <div className="text-xs text-gray-500">Mix Type</div>
+                        <div className="font-semibold">{selectedParty.mixType || "DBM"}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-500">Order Qty</div>
+                        <div className="font-semibold">{Number(selectedParty.totalRequiredMT).toFixed(2)} MT</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-500">Dispatched</div>
+                        <div className="font-semibold">{partyStats.dispatched.toFixed(2)} MT</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-500">Balance</div>
+                        <div className={`font-semibold ${partyStats.balance < 0 ? "text-red-600" : "text-green-600"}`}>
+                          {partyStats.balance.toFixed(2)} MT
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -309,7 +323,7 @@ export default function PlantDispatch() {
                       </TableCell>
                       <TableCell>{dispatch.siteName}</TableCell>
                       <TableCell>{dispatch.vehicleNo}</TableCell>
-                      <TableCell>{dispatch.loadMT.toFixed(2)}</TableCell>
+                      <TableCell>{Number(dispatch.loadMT).toFixed(2)}</TableCell>
                       <TableCell>{format(new Date(dispatch.createdAt), "dd MMM yyyy HH:mm")}</TableCell>
                       <TableCell>
                         <Badge

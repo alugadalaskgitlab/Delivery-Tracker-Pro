@@ -250,6 +250,31 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/parties/:id", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const partyId = Array.isArray(id) ? id[0] : id;
+
+      const dispatchCount = await storage.getDispatchCountByParty(partyId);
+      if (dispatchCount > 0) {
+        return res.status(400).json({ error: "Cannot delete party with existing dispatches" });
+      }
+
+      await storage.deactivateSiteTokensByParty(partyId);
+      await storage.deletePartySequence(partyId);
+      const deleted = await storage.deleteParty(partyId);
+
+      if (!deleted) {
+        return res.status(404).json({ error: "Party not found" });
+      }
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Delete party error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.post("/api/parties/:id/generate-token", requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;

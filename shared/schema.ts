@@ -25,6 +25,7 @@ export const parties = pgTable("parties", {
   partyName: text("party_name").notNull(),
   partyCode: text("party_code").notNull().unique(),
   orderRefNo: text("order_ref_no"),
+  mixType: text("mix_type").notNull().default("DBM"),
   totalRequiredMT: numeric("total_required_mt", { precision: 10, scale: 2 }).notNull(),
   status: text("status").notNull(),
   accessId: text("access_id").notNull().unique(),
