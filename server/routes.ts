@@ -60,6 +60,8 @@ export async function registerRoutes(
     try {
       const { role, pin } = req.body;
 
+      console.log(`[PIN Login] Attempt for role: ${role}, pin provided: ${pin}`);
+
       if (!role || !pin) {
         return res.status(400).json({ error: "Role and PIN required" });
       }
@@ -70,6 +72,8 @@ export async function registerRoutes(
 
       const settingKey = role === "ADMIN" ? "admin_pin" : "plant_pin";
       const storedPin = await storage.getSetting(settingKey);
+
+      console.log(`[PIN Login] Stored PIN for ${settingKey}: "${storedPin}", Provided PIN: "${pin}", Match: ${pin === storedPin}`);
 
       if (!storedPin) {
         return res.status(500).json({ error: "PIN not configured" });
