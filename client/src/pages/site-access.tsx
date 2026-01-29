@@ -267,7 +267,7 @@ export default function SiteAccess() {
                         <TableCell className="font-medium">{dispatch.challanNo}</TableCell>
                         <TableCell>{dispatch.siteName}</TableCell>
                         <TableCell>{dispatch.vehicleNo}</TableCell>
-                        <TableCell>{dispatch.loadMT.toFixed(2)}</TableCell>
+                        <TableCell>{Number(dispatch.loadMT).toFixed(2)}</TableCell>
                         <TableCell>{format(new Date(dispatch.createdAt), "dd MMM HH:mm")}</TableCell>
                         <TableCell>
                           <Badge
@@ -356,7 +356,7 @@ export default function SiteAccess() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Load:</span>
-                  <span className="font-medium">{selectedDispatch.loadMT.toFixed(2)} MT</span>
+                  <span className="font-medium">{Number(selectedDispatch.loadMT).toFixed(2)} MT</span>
                 </div>
               </div>
 
