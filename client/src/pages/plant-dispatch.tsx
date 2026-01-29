@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { Loader2, Home } from "lucide-react";
 
 type Party = {
   id: string;
@@ -42,7 +42,7 @@ type Dispatch = {
 };
 
 export default function PlantDispatch() {
-  const { user, logout } = useAuth();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -51,6 +51,15 @@ export default function PlantDispatch() {
   const [vehicleNo, setVehicleNo] = useState("");
   const [loadMT, setLoadMT] = useState("");
   const [notes, setNotes] = useState("");
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
+    }
+    setLocation("/");
+  }
 
   const { data: parties = [] } = useQuery<Party[]>({
     queryKey: ["/api/parties"],
@@ -150,11 +159,14 @@ export default function PlantDispatch() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Plant Dispatch</h1>
+          <div>
+            <h1 className="text-2xl font-bold">Plant Dispatch</h1>
+            <p className="text-sm text-gray-500">Create dispatches and track acknowledgements</p>
+          </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">{user?.displayName}</span>
-            <Button variant="outline" onClick={logout} data-testid="button-logout">
-              Logout
+            <Button variant="outline" onClick={handleLogout} data-testid="button-home" className="gap-2">
+              <Home className="h-4 w-4" />
+              Home
             </Button>
           </div>
         </div>

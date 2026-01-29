@@ -1,39 +1,32 @@
 import { db } from "./index";
-import { users } from "@shared/schema";
-import { hashPassword } from "../server/auth";
+import { appSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 async function seed() {
   console.log("Seeding database...");
 
-  const adminUsername = "admin";
-  const existingAdmin = await db.select().from(users).where(eq(users.username, adminUsername)).limit(1);
+  const existingAdminPin = await db.select().from(appSettings).where(eq(appSettings.key, "admin_pin")).limit(1);
   
-  if (existingAdmin.length === 0) {
-    await db.insert(users).values({
-      username: adminUsername,
-      password: await hashPassword("admin123"),
-      role: "ADMIN",
-      displayName: "Administrator",
+  if (existingAdminPin.length === 0) {
+    await db.insert(appSettings).values({
+      key: "admin_pin",
+      value: "1234",
     });
-    console.log("✓ Created admin user (username: admin, password: admin123)");
+    console.log("✓ Created admin PIN (default: 1234)");
   } else {
-    console.log("✓ Admin user already exists");
+    console.log("✓ Admin PIN already exists");
   }
 
-  const plantUsername = "plant";
-  const existingPlant = await db.select().from(users).where(eq(users.username, plantUsername)).limit(1);
+  const existingPlantPin = await db.select().from(appSettings).where(eq(appSettings.key, "plant_pin")).limit(1);
   
-  if (existingPlant.length === 0) {
-    await db.insert(users).values({
-      username: plantUsername,
-      password: await hashPassword("plant123"),
-      role: "PLANT",
-      displayName: "Plant Operator",
+  if (existingPlantPin.length === 0) {
+    await db.insert(appSettings).values({
+      key: "plant_pin",
+      value: "5678",
     });
-    console.log("✓ Created plant user (username: plant, password: plant123)");
+    console.log("✓ Created plant PIN (default: 5678)");
   } else {
-    console.log("✓ Plant user already exists");
+    console.log("✓ Plant PIN already exists");
   }
 
   console.log("Seeding complete!");

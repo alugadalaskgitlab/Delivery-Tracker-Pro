@@ -9,11 +9,14 @@ import {
   type InsertSiteToken,
   type PartySequence,
   type InsertPartySequence,
+  type AppSetting,
+  type InsertAppSetting,
   users,
   parties,
   dispatches,
   siteTokens,
   partySequences,
+  appSettings,
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -44,6 +47,9 @@ export interface IStorage {
   
   getPartySequence(partyId: string): Promise<PartySequence | undefined>;
   incrementPartySequence(partyId: string): Promise<number>;
+  
+  getSetting(key: string): Promise<string | undefined>;
+  setSetting(key: string, value: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -165,6 +171,20 @@ export class DbStorage implements IStorage {
     }).returning();
     
     return newSeq[0].currentSeq;
+  }
+
+  async getSetting(key: string): Promise<string | undefined> {
+    const result = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+    return result[0]?.value;
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    const existing = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+    if (existing.length > 0) {
+      await db.update(appSettings).set({ value, updatedAt: new Date() }).where(eq(appSettings.key, key));
+    } else {
+      await db.insert(appSettings).values({ key, value });
+    }
   }
 }
 

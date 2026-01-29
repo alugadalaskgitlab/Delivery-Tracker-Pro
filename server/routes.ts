@@ -39,64 +39,107 @@ export async function registerRoutes(
     })
   );
 
-  app.post("/api/auth/login", async (req: Request, res: Response) => {
+  app.post("/api/auth/pin-login", async (req: Request, res: Response) => {
     try {
-      const { username, password, siteToken } = req.body;
+      const { role, pin } = req.body;
 
-      if (siteToken) {
-        const token = await storage.getSiteTokenByToken(siteToken);
-        if (!token || !token.active) {
-          return res.status(401).json({ error: "Invalid or inactive site token" });
-        }
-        
-        const party = await storage.getParty(token.partyId);
-        if (!party || party.status !== "ACTIVE") {
-          return res.status(401).json({ error: "Party/order is not active" });
-        }
-
-        req.session.userId = `site_${token.id}`;
-        req.session.role = "SITE";
-        (req.session as any).partyId = party.id;
-        (req.session as any).siteTokenId = token.id;
-
-        return res.json({
-          user: {
-            id: req.session.userId,
-            username: `Site: ${party.partyName}`,
-            role: "SITE",
-            displayName: party.partyName,
-          },
-          partyId: party.id,
-        });
+      if (!role || !pin) {
+        return res.status(400).json({ error: "Role and PIN required" });
       }
 
-      if (!username || !password) {
-        return res.status(400).json({ error: "Username and password required" });
+      if (role !== "ADMIN" && role !== "PLANT") {
+        return res.status(400).json({ error: "Invalid role" });
       }
 
-      const user = await storage.getUserByUsername(username);
-      if (!user) {
-        return res.status(401).json({ error: "Invalid credentials" });
+      const settingKey = role === "ADMIN" ? "admin_pin" : "plant_pin";
+      const storedPin = await storage.getSetting(settingKey);
+
+      if (!storedPin) {
+        return res.status(500).json({ error: "PIN not configured" });
       }
 
-      const valid = await verifyPassword(password, user.password);
-      if (!valid) {
-        return res.status(401).json({ error: "Invalid credentials" });
+      if (pin !== storedPin) {
+        return res.status(401).json({ error: "Invalid PIN" });
       }
 
-      req.session.userId = user.id;
-      req.session.role = user.role;
+      req.session.userId = `${role.toLowerCase()}_session`;
+      req.session.role = role;
 
       return res.json({
         user: {
-          id: user.id,
-          username: user.username,
-          role: user.role,
-          displayName: user.displayName,
+          id: req.session.userId,
+          role: role,
+          displayName: role === "ADMIN" ? "Administrator" : "Plant Operator",
         },
       });
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("PIN login error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/auth/site-login", async (req: Request, res: Response) => {
+    try {
+      const { token: siteToken } = req.body;
+
+      if (!siteToken) {
+        return res.status(400).json({ error: "Token required" });
+      }
+
+      const token = await storage.getSiteTokenByToken(siteToken);
+      if (!token || !token.active) {
+        return res.status(401).json({ error: "Invalid or inactive token" });
+      }
+      
+      const party = await storage.getParty(token.partyId);
+      if (!party || party.status !== "ACTIVE") {
+        return res.status(401).json({ error: "Access closed - party/order is not active" });
+      }
+
+      req.session.userId = `site_${token.id}`;
+      req.session.role = "SITE";
+      (req.session as any).partyId = party.id;
+      (req.session as any).siteTokenId = token.id;
+
+      return res.json({
+        user: {
+          id: req.session.userId,
+          username: `Site: ${party.partyName}`,
+          role: "SITE",
+          displayName: party.partyName,
+        },
+        partyId: party.id,
+      });
+    } catch (error) {
+      console.error("Site login error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/settings/:key", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { key } = req.params;
+      const value = await storage.getSetting(key);
+      return res.json({ key, value: value || null });
+    } catch (error) {
+      console.error("Get setting error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.put("/api/settings/:key", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { key } = req.params;
+      const { value } = req.body;
+
+      if (!value) {
+        return res.status(400).json({ error: "Value required" });
+      }
+
+      await storage.setSetting(key, value);
+      return res.json({ key, value });
+    } catch (error) {
+      console.error("Set setting error:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });

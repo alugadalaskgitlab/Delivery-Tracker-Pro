@@ -7,11 +7,14 @@ import {
   ClipboardList,
   FileText,
   Filter,
+  Home,
   Link2,
+  LogOut,
   MapPin,
   PackageOpen,
   Plus,
   Search,
+  Settings,
   Shield,
   Truck,
   Users,
@@ -27,6 +30,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 const APP_NAME = "DispatchFlow";
@@ -284,6 +295,11 @@ export default function AdminDashboard() {
 
   const [lastCreatedChallan, setLastCreatedChallan] = useState<string>("");
 
+  const [showSettings, setShowSettings] = useState(false);
+  const [adminPin, setAdminPin] = useState("");
+  const [plantPin, setPlantPin] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+
   const shareBase = useMemo(() => {
     try {
       return `${window.location.origin}/site/`;
@@ -533,6 +549,52 @@ export default function AdminDashboard() {
     setNewStatus("ACTIVE");
   }
 
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
+    }
+    setLocation("/");
+  }
+
+  async function handleSaveSettings() {
+    if (!adminPin && !plantPin) {
+      toast("No changes", { description: "Enter at least one PIN to change" });
+      return;
+    }
+
+    setSavingSettings(true);
+    try {
+      if (adminPin) {
+        const res = await fetch("/api/settings/admin_pin", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: adminPin }),
+        });
+        if (!res.ok) throw new Error("Failed to update Admin PIN");
+      }
+
+      if (plantPin) {
+        const res = await fetch("/api/settings/plant_pin", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: plantPin }),
+        });
+        if (!res.ok) throw new Error("Failed to update Plant PIN");
+      }
+
+      toast("Settings saved", { description: "PINs have been updated" });
+      setShowSettings(false);
+      setAdminPin("");
+      setPlantPin("");
+    } catch (error) {
+      toast("Error", { description: error instanceof Error ? error.message : "Failed to save settings" });
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
   return (
     <div className="min-h-screen df-grid">
       <header className="sticky top-0 z-30 border-b border-border/70 bg-background/70 backdrop-blur">
@@ -558,7 +620,7 @@ export default function AdminDashboard() {
             </div>
             <Button variant="secondary" className="gap-2" data-testid="button-enable-notifications" onClick={ensureNotifPermission}>
               <Bell className="h-4 w-4" />
-              Enable alerts
+              <span className="hidden sm:inline">Enable alerts</span>
             </Button>
             <Button
               variant="secondary"
@@ -580,6 +642,24 @@ export default function AdminDashboard() {
               >
                 {notifCount}
               </span>
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              data-testid="button-settings"
+              onClick={() => setShowSettings(true)}
+            >
+              <Settings className="h-4 w-4" />
+              <span className="hidden sm:inline">Settings</span>
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              data-testid="button-home"
+              onClick={handleLogout}
+            >
+              <Home className="h-4 w-4" />
+              <span className="hidden sm:inline">Home</span>
             </Button>
           </div>
         </div>
@@ -1332,14 +1412,55 @@ export default function AdminDashboard() {
         </div>
 
         <footer className="mt-10 pb-10 text-center text-xs text-muted-foreground">
-          <div data-testid="text-footer">Prototype only • data stored in this browser • no backend writes</div>
-          <div className="mt-1">
-            <Link href="/admin" data-testid="link-admin" className="underline underline-offset-4">
-              Admin dashboard
-            </Link>
-          </div>
+          <div data-testid="text-footer">Admin Dashboard • DispatchFlow</div>
         </footer>
       </main>
+
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent data-testid="dialog-settings">
+          <DialogHeader>
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>
+              Change the Admin and Plant PINs. Leave blank to keep existing PIN.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="adminPinInput">New Admin PIN</Label>
+              <Input
+                id="adminPinInput"
+                type="password"
+                data-testid="input-admin-pin"
+                value={adminPin}
+                onChange={(e) => setAdminPin(e.target.value)}
+                placeholder="Enter new Admin PIN"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="plantPinInput">New Plant PIN</Label>
+              <Input
+                id="plantPinInput"
+                type="password"
+                data-testid="input-plant-pin"
+                value={plantPin}
+                onChange={(e) => setPlantPin(e.target.value)}
+                placeholder="Enter new Plant PIN"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSettings(false)} data-testid="button-cancel-settings">
+              Cancel
+            </Button>
+            <Button onClick={handleSaveSettings} disabled={savingSettings} data-testid="button-save-settings">
+              {savingSettings ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

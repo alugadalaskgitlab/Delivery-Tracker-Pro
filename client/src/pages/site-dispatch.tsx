@@ -1,6 +1,6 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Loader2, PackageCheck, Truck } from "lucide-react";
+import { Loader2, PackageCheck, Truck, Home } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -39,13 +39,22 @@ type Dispatch = {
 };
 
 export default function SiteDispatch() {
-  const { user, logout, partyId } = useAuth();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null);
   const [action, setAction] = useState<"arrived" | "left" | null>(null);
   const [receiverName, setReceiverName] = useState("");
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
+    }
+    setLocation("/");
+  }
 
   const { data: dispatches = [], isLoading } = useQuery<Dispatch[]>({
     queryKey: ["/api/dispatches"],
@@ -128,10 +137,11 @@ export default function SiteDispatch() {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold">Site Dispatch Tracking</h1>
-            <p className="text-sm text-gray-600">{user?.displayName}</p>
+            <p className="text-sm text-gray-600">Track and acknowledge incoming deliveries</p>
           </div>
-          <Button variant="outline" onClick={logout} data-testid="button-logout">
-            Logout
+          <Button variant="outline" onClick={handleLogout} data-testid="button-home" className="gap-2">
+            <Home className="h-4 w-4" />
+            Home
           </Button>
         </div>
       </header>
