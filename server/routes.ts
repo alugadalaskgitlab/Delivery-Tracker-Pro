@@ -217,7 +217,7 @@ export async function registerRoutes(
       const party = await storage.createParty({
         ...data,
         accessId,
-        createdBy: req.session.userId,
+        createdBy: null,
       });
 
       return res.json(party);
