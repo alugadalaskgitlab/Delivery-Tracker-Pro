@@ -1,0 +1,59 @@
+Upgrade this app to a FULL-STACK app with persistent database and secure server-side authentication and authorization (not frontend-only). Implement role-based access with three roles: ADMIN, PLANT, SITE. Enforce permissions on the backend for every API route.
+
+Roles & Screens
+
+ADMIN (full access)
+
+Can create/manage Parties/Orders (Party Name, Party Code unique, optional Order Ref No, Total Order Qty MT, Active/Inactive).
+
+Can see all dispatches and all acknowledgements, all parties.
+
+Can export Excel/PDF, print with an Admin PIN confirmation (PIN required for export/print).
+
+Can reconcile & close orders (‘Reconciled & Invoiced’) and deactivate SITE access tokens.
+
+Has global dashboard + notification log + filters.
+
+PLANT (limited access)
+
+Can create dispatches only (Dispatch Entry Screen). Dispatch auto-generates Challan No (PARTYCODE-0001 sequential per party) and auto dispatch timestamp.
+
+When selecting a Party on dispatch entry, show that Party’s Total Order Qty, Dispatched Qty so far, and Balance Qty.
+
+Can view their own dispatch summary (read-only).
+
+Can view acknowledgements (read-only) for their dispatched trips, but no acknowledge buttons.
+
+Cannot access Party master, cannot see other parties’ data, cannot access admin screens.
+
+SITE (token-based, limited)
+
+SITE access is via a special link/token per Party/Order (or per site user mapped to specific party/order).
+
+SITE sees ONLY: list of trips for that party/order + ARRIVED and LEFT buttons.
+
+On ARRIVED: mandatory receiver name + timestamp.
+
+On LEFT: mandatory receiver name + timestamp.
+
+Do NOT ask for received quantity (invoice as per dispatch).
+
+SITE cannot create dispatch, cannot view other parties, cannot view admin/plant data.
+
+When Party is marked ‘Reconciled & Invoiced’ or Inactive, SITE token becomes inactive and shows ‘Access Closed’.
+
+Notifications + Sound
+
+Browser notifications may not play sound reliably; implement dependable in-app sound alerts: add ‘Enable Sound Alerts’ toggle (requires user gesture) and ‘Test Sound’ button.
+
+On Dispatch Created / ARRIVED / LEFT: show in-app toast + add to notification log + play sound when enabled.
+
+Continue browser notifications if permission is granted.
+
+Fix Filters
+
+Fix table filters so they work correctly on the dashboard and list views: date range, party, site, mix type, vehicle no.
+
+Filters must apply to visible table rows and totals must update accordingly.
+
+Do not break existing working features (party master, challan numbering, arrived/left). Implement all access rules securely on backend routes and UI routing so each role lands only on its allowed screen.”
