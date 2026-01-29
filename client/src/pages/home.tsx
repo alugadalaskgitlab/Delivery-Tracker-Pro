@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Factory, MapPin } from "lucide-react";
+import { Shield, Factory } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,14 +15,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-type RoleType = "admin" | "plant" | "site" | null;
+type RoleType = "admin" | "plant" | null;
 
 export default function Home() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [selectedRole, setSelectedRole] = useState<RoleType>(null);
   const [pin, setPin] = useState("");
-  const [siteToken, setSiteToken] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handlePinSubmit() {
@@ -54,39 +53,9 @@ export default function Home() {
     }
   }
 
-  async function handleSiteSubmit() {
-    if (!siteToken) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/site-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: siteToken }),
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Invalid token");
-      }
-
-      setLocation("/site");
-    } catch (error) {
-      toast({
-        title: "Access Denied",
-        description: error instanceof Error ? error.message : "Invalid or inactive token",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-      setSiteToken("");
-    }
-  }
-
   function closeDialog() {
     setSelectedRole(null);
     setPin("");
-    setSiteToken("");
   }
 
   return (
@@ -97,7 +66,7 @@ export default function Home() {
           <p className="text-lg text-gray-600">Material Dispatch Management System</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
           <Card 
             className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-blue-400"
             onClick={() => setSelectedRole("admin")}
@@ -129,23 +98,6 @@ export default function Home() {
             </CardHeader>
             <CardContent className="text-center text-sm text-gray-500">
               Create dispatches, view own dispatch summary, track acknowledgements
-            </CardContent>
-          </Card>
-
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-orange-400"
-            onClick={() => setSelectedRole("site")}
-            data-testid="card-site"
-          >
-            <CardHeader className="text-center">
-              <div className="mx-auto w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-                <MapPin className="w-8 h-8 text-orange-600" />
-              </div>
-              <CardTitle>Site</CardTitle>
-              <CardDescription>Delivery acknowledgement</CardDescription>
-            </CardHeader>
-            <CardContent className="text-center text-sm text-gray-500">
-              View trips, mark arrivals and departures with receiver name
             </CardContent>
           </Card>
         </div>
@@ -189,41 +141,6 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={selectedRole === "site"} onOpenChange={() => closeDialog()}>
-        <DialogContent data-testid="dialog-token">
-          <DialogHeader>
-            <DialogTitle>Site Access</DialogTitle>
-            <DialogDescription>
-              Enter your site access token to view deliveries
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="siteToken">Access Token</Label>
-              <Input
-                id="siteToken"
-                type="text"
-                data-testid="input-site-token"
-                value={siteToken}
-                onChange={(e) => setSiteToken(e.target.value)}
-                placeholder="Enter access token"
-                autoFocus
-                onKeyDown={(e) => e.key === "Enter" && handleSiteSubmit()}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={closeDialog} data-testid="button-cancel-site">
-              Cancel
-            </Button>
-            <Button onClick={handleSiteSubmit} disabled={loading || !siteToken} data-testid="button-submit-token">
-              {loading ? "Verifying..." : "Enter"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

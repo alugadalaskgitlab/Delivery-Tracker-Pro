@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
+import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Loader2, PackageCheck, Truck, Home } from "lucide-react";
+import { Loader2, PackageCheck, Truck, XCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -38,7 +38,15 @@ type Dispatch = {
   notes?: string | null;
 };
 
-export default function SiteDispatch() {
+type TokenValidation = {
+  valid: boolean;
+  partyName?: string;
+  partyCode?: string;
+  error?: string;
+};
+
+export default function SiteAccess() {
+  const { token } = useParams<{ token: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -47,34 +55,42 @@ export default function SiteDispatch() {
   const [action, setAction] = useState<"arrived" | "left" | null>(null);
   const [receiverName, setReceiverName] = useState("");
 
-  async function handleLogout() {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } catch {
-      // ignore
-    }
-    setLocation("/");
-  }
-
-  const { data: dispatches = [], isLoading } = useQuery<Dispatch[]>({
-    queryKey: ["/api/dispatches"],
+  const { data: validation, isLoading: validating, error: validationError } = useQuery<TokenValidation>({
+    queryKey: ["/api/site/validate", token],
     queryFn: async () => {
-      const res = await fetch("/api/dispatches");
+      const res = await fetch(`/api/site/validate/${token}`);
+      if (!res.ok) {
+        const error = await res.json();
+        return { valid: false, error: error.error || "Invalid token" };
+      }
+      return res.json();
+    },
+    enabled: !!token,
+    retry: false,
+  });
+
+  const { data: dispatches = [], isLoading: loadingDispatches } = useQuery<Dispatch[]>({
+    queryKey: ["/api/site/dispatches", token],
+    queryFn: async () => {
+      const res = await fetch(`/api/site/dispatches/${token}`);
       if (!res.ok) throw new Error("Failed to fetch dispatches");
       return res.json();
     },
+    enabled: validation?.valid === true,
     refetchInterval: 5000,
   });
 
   const acknowledgeMutation = useMutation({
     mutationFn: async ({ id, action, name }: { id: string; action: "arrived" | "left"; name: string }) => {
-      const endpoint = action === "arrived" ? `/api/dispatches/${id}/arrived` : `/api/dispatches/${id}/left`;
+      const endpoint = action === "arrived" 
+        ? `/api/site/dispatches/${id}/arrived` 
+        : `/api/site/dispatches/${id}/left`;
       const body = action === "arrived" ? { arrivedByName: name } : { leftByName: name };
 
       const res = await fetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, token }),
       });
 
       if (!res.ok) {
@@ -85,7 +101,7 @@ export default function SiteDispatch() {
       return res.json();
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/site/dispatches", token] });
       setSelectedDispatch(null);
       setAction(null);
       setReceiverName("");
@@ -127,6 +143,40 @@ export default function SiteDispatch() {
     });
   }
 
+  if (validating) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-gray-600">Validating access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!validation?.valid) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <XCircle className="w-8 h-8 text-red-600" />
+            </div>
+            <CardTitle className="text-red-600">Access Closed</CardTitle>
+            <CardDescription>
+              {validation?.error || "This access link is no longer valid or the party/order has been closed."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center">
+            <p className="text-sm text-gray-500">
+              Please contact your administrator for a new access link if needed.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const dispatchedCount = dispatches.filter((d) => d.status === "DISPATCHED").length;
   const arrivedCount = dispatches.filter((d) => d.status === "ARRIVED").length;
   const leftCount = dispatches.filter((d) => d.status === "LEFT").length;
@@ -134,15 +184,11 @@ export default function SiteDispatch() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="container mx-auto px-4 py-4">
           <div>
-            <h1 className="text-2xl font-bold">Site Dispatch Tracking</h1>
-            <p className="text-sm text-gray-600">Track and acknowledge incoming deliveries</p>
+            <h1 className="text-2xl font-bold">Dispatch Tracking</h1>
+            <p className="text-sm text-gray-600">{validation.partyName} ({validation.partyCode})</p>
           </div>
-          <Button variant="outline" onClick={handleLogout} data-testid="button-home" className="gap-2">
-            <Home className="h-4 w-4" />
-            Home
-          </Button>
         </div>
       </header>
 
@@ -153,7 +199,7 @@ export default function SiteDispatch() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">In Transit</p>
-                  <p className="text-3xl font-bold">{dispatchedCount}</p>
+                  <p className="text-3xl font-bold" data-testid="count-dispatched">{dispatchedCount}</p>
                 </div>
                 <Truck className="h-8 w-8 text-blue-500" />
               </div>
@@ -165,7 +211,7 @@ export default function SiteDispatch() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Arrived</p>
-                  <p className="text-3xl font-bold">{arrivedCount}</p>
+                  <p className="text-3xl font-bold" data-testid="count-arrived">{arrivedCount}</p>
                 </div>
                 <PackageCheck className="h-8 w-8 text-yellow-500" />
               </div>
@@ -177,7 +223,7 @@ export default function SiteDispatch() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Completed</p>
-                  <p className="text-3xl font-bold">{leftCount}</p>
+                  <p className="text-3xl font-bold" data-testid="count-left">{leftCount}</p>
                 </div>
                 <PackageCheck className="h-8 w-8 text-green-500" />
               </div>
@@ -191,7 +237,7 @@ export default function SiteDispatch() {
             <CardDescription>Track and acknowledge incoming deliveries</CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {loadingDispatches ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
               </div>

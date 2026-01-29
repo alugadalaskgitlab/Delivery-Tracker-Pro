@@ -401,5 +401,183 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/site/validate/:token", async (req: Request, res: Response) => {
+    try {
+      const { token: siteToken } = req.params;
+
+      const token = await storage.getSiteTokenByToken(siteToken);
+      if (token && token.active) {
+        const party = await storage.getParty(token.partyId);
+        if (!party || party.status !== "ACTIVE") {
+          return res.status(401).json({ valid: false, error: "Access closed - party/order is not active" });
+        }
+        return res.json({
+          valid: true,
+          partyName: party.partyName,
+          partyCode: party.partyCode,
+          partyId: party.id,
+        });
+      }
+
+      const partyByAccess = await storage.getPartyByAccessId(siteToken);
+      if (partyByAccess && partyByAccess.status === "ACTIVE") {
+        return res.json({
+          valid: true,
+          partyName: partyByAccess.partyName,
+          partyCode: partyByAccess.partyCode,
+          partyId: partyByAccess.id,
+        });
+      }
+
+      return res.status(401).json({ valid: false, error: "Invalid or inactive token" });
+    } catch (error) {
+      console.error("Validate token error:", error);
+      return res.status(500).json({ valid: false, error: "Internal server error" });
+    }
+  });
+
+  async function resolvePartyFromToken(siteToken: string): Promise<{ party: any; error?: string } | null> {
+    const token = await storage.getSiteTokenByToken(siteToken);
+    if (token && token.active) {
+      const party = await storage.getParty(token.partyId);
+      if (!party || party.status !== "ACTIVE") {
+        return { party: null, error: "Access closed - party/order is not active" };
+      }
+      return { party };
+    }
+
+    const partyByAccess = await storage.getPartyByAccessId(siteToken);
+    if (partyByAccess && partyByAccess.status === "ACTIVE") {
+      return { party: partyByAccess };
+    }
+
+    return null;
+  }
+
+  app.get("/api/site/dispatches/:token", async (req: Request, res: Response) => {
+    try {
+      const { token: siteToken } = req.params;
+
+      const result = await resolvePartyFromToken(siteToken);
+      if (!result) {
+        return res.status(401).json({ error: "Invalid or inactive token" });
+      }
+      if (result.error) {
+        return res.status(401).json({ error: result.error });
+      }
+
+      const dispatches = await storage.getDispatchesByParty(result.party.id);
+      return res.json(dispatches);
+    } catch (error) {
+      console.error("Get site dispatches error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/site/dispatches/:id/arrived", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { arrivedByName, token: siteToken } = req.body;
+
+      if (!arrivedByName) {
+        return res.status(400).json({ error: "Receiver name is required" });
+      }
+
+      if (!siteToken) {
+        return res.status(400).json({ error: "Token is required" });
+      }
+
+      const result = await resolvePartyFromToken(siteToken);
+      if (!result) {
+        return res.status(401).json({ error: "Invalid or inactive token" });
+      }
+      if (result.error) {
+        return res.status(401).json({ error: result.error });
+      }
+
+      const dispatch = await storage.getDispatch(id);
+      if (!dispatch) {
+        return res.status(404).json({ error: "Dispatch not found" });
+      }
+
+      if (dispatch.partyId !== result.party.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      if (dispatch.status !== "DISPATCHED") {
+        return res.status(400).json({ error: "Dispatch is not in DISPATCHED status" });
+      }
+
+      const updated = await storage.updateDispatch(id, {
+        status: "ARRIVED",
+        arrivedAt: new Date(),
+        arrivedByName,
+      });
+
+      return res.json(updated);
+    } catch (error) {
+      console.error("Site arrived error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/site/dispatches/:id/left", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { leftByName, token: siteToken } = req.body;
+
+      if (!leftByName) {
+        return res.status(400).json({ error: "Receiver name is required" });
+      }
+
+      if (!siteToken) {
+        return res.status(400).json({ error: "Token is required" });
+      }
+
+      const result = await resolvePartyFromToken(siteToken);
+      if (!result) {
+        return res.status(401).json({ error: "Invalid or inactive token" });
+      }
+      if (result.error) {
+        return res.status(401).json({ error: result.error });
+      }
+
+      const dispatch = await storage.getDispatch(id);
+      if (!dispatch) {
+        return res.status(404).json({ error: "Dispatch not found" });
+      }
+
+      if (dispatch.partyId !== result.party.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      if (dispatch.status !== "ARRIVED") {
+        return res.status(400).json({ error: "Dispatch is not in ARRIVED status" });
+      }
+
+      const updated = await storage.updateDispatch(id, {
+        status: "LEFT",
+        leftAt: new Date(),
+        leftByName,
+      });
+
+      return res.json(updated);
+    } catch (error) {
+      console.error("Site left error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/parties/:id/tokens", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const tokens = await storage.getSiteTokensByParty(id);
+      return res.json(tokens);
+    } catch (error) {
+      console.error("Get tokens error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

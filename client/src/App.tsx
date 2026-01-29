@@ -7,7 +7,7 @@ import NotFound from "@/pages/not-found";
 import Home from "./pages/home";
 import AdminDashboard from "./pages/admin-dashboard";
 import PlantDispatch from "./pages/plant-dispatch";
-import SiteDispatch from "./pages/site-dispatch";
+import SiteAccess from "./pages/site-access";
 
 export default function App() {
   return (
@@ -19,7 +19,7 @@ export default function App() {
             <Route path="/" component={Home} />
             <Route path="/admin" component={AdminDashboard} />
             <Route path="/plant" component={PlantDispatch} />
-            <Route path="/site" component={SiteDispatch} />
+            <Route path="/site/:token" component={SiteAccess} />
             <Route component={NotFound} />
           </Switch>
         </TooltipProvider>
