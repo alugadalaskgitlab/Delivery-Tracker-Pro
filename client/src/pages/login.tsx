@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function Login() {
   const { login } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [siteToken, setSiteToken] = useState("");
@@ -21,7 +23,14 @@ export default function Login() {
 
     setLoading(true);
     try {
-      await login({ username, password });
+      const user = await login({ username, password });
+      if (user.role === "ADMIN") {
+        setLocation("/admin");
+      } else if (user.role === "PLANT") {
+        setLocation("/plant");
+      } else if (user.role === "SITE") {
+        setLocation("/site");
+      }
     } catch (error) {
       toast({
         title: "Login Failed",
@@ -39,7 +48,8 @@ export default function Login() {
 
     setLoading(true);
     try {
-      await login({ siteToken });
+      const user = await login({ siteToken });
+      setLocation("/site");
     } catch (error) {
       toast({
         title: "Login Failed",

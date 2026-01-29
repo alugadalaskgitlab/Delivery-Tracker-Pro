@@ -1,5 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { useLocation } from "wouter";
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 
 interface User {
   id: string;
@@ -12,7 +11,7 @@ interface AuthContextType {
   user: User | null;
   partyId: string | null;
   loading: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<User>;
   logout: () => Promise<void>;
 }
 
@@ -28,7 +27,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [partyId, setPartyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [, setLocation] = useLocation();
 
   useEffect(() => {
     checkAuth();
@@ -49,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function login(credentials: LoginCredentials) {
+  const login = useCallback(async (credentials: LoginCredentials): Promise<User> => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -64,22 +62,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json();
     setUser(data.user);
     setPartyId(data.partyId || null);
+    return data.user;
+  }, []);
 
-    if (data.user.role === "ADMIN") {
-      setLocation("/admin");
-    } else if (data.user.role === "PLANT") {
-      setLocation("/plant");
-    } else if (data.user.role === "SITE") {
-      setLocation("/site");
-    }
-  }
-
-  async function logout() {
+  const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     setUser(null);
     setPartyId(null);
-    setLocation("/login");
-  }
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, partyId, loading, login, logout }}>
