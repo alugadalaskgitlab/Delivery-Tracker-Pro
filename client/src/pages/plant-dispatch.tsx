@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { io } from "socket.io-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -52,6 +53,29 @@ export default function PlantDispatch() {
   const [vehicleNo, setVehicleNo] = useState("");
   const [loadMT, setLoadMT] = useState("");
   const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    const socket = io();
+    
+    socket.on("dispatch-status-updated", (data: {
+      dispatch: Dispatch;
+      partyName: string;
+      partyCode: string;
+      newStatus: string;
+      receiverName: string;
+    }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
+      
+      toast({
+        title: `Dispatch ${data.dispatch.challanNo} - ${data.newStatus}`,
+        description: `${data.partyName} (${data.partyCode}) - Acknowledged by ${data.receiverName}`,
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [queryClient, toast]);
 
   async function handleLogout() {
     try {

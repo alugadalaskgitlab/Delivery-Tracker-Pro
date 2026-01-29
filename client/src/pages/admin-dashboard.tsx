@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { io } from "socket.io-client";
 import {
   CheckCircle2,
   Copy,
@@ -111,6 +112,33 @@ export default function AdminDashboard() {
   const [adminPin, setAdminPin] = useState("");
   const [plantPin, setPlantPin] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
+
+  useEffect(() => {
+    const socket = io();
+    
+    socket.on("dispatch-status-updated", (data: {
+      dispatch: {
+        id: string;
+        challanNo: string;
+        status: string;
+      };
+      partyName: string;
+      partyCode: string;
+      newStatus: string;
+      receiverName: string;
+    }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
+      
+      toast({
+        title: `Dispatch ${data.dispatch.challanNo} - ${data.newStatus}`,
+        description: `${data.partyName} (${data.partyCode}) - Acknowledged by ${data.receiverName}`,
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [queryClient, toast]);
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [partyToDelete, setPartyToDelete] = useState<Party | null>(null);

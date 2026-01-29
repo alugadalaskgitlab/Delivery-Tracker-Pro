@@ -1,10 +1,13 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import session from "express-session";
+import { Server as SocketIOServer } from "socket.io";
 import { storage } from "./storage";
 import { hashPassword, verifyPassword, requireAuth, requireAdmin, requirePlantOrAdmin, requireRole, getCurrentUser } from "./auth";
 import { insertPartySchema, insertDispatchSchema } from "@shared/schema";
 import { z } from "zod";
+
+let io: SocketIOServer;
 
 function slugify(s: string) {
   return s
@@ -26,6 +29,20 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: process.env.NODE_ENV === "production" ? false : true,
+      methods: ["GET", "POST"],
+    },
+  });
+
+  io.on("connection", (socket) => {
+    console.log("Client connected:", socket.id);
+    socket.on("disconnect", () => {
+      console.log("Client disconnected:", socket.id);
+    });
+  });
+
   app.use(
     session({
       secret: process.env.SESSION_SECRET || "dev-secret-change-in-production",
@@ -383,6 +400,15 @@ export async function registerRoutes(
         arrivedByName,
       });
 
+      const party = await storage.getParty(dispatch.partyId);
+      io.emit("dispatch-status-updated", {
+        dispatch: updated,
+        partyName: party?.partyName || "",
+        partyCode: party?.partyCode || "",
+        newStatus: "ARRIVED",
+        receiverName: arrivedByName,
+      });
+
       return res.json(updated);
     } catch (error) {
       console.error("Arrived error:", error);
@@ -417,6 +443,15 @@ export async function registerRoutes(
         status: "LEFT",
         leftAt: new Date(),
         leftByName,
+      });
+
+      const party = await storage.getParty(dispatch.partyId);
+      io.emit("dispatch-status-updated", {
+        dispatch: updated,
+        partyName: party?.partyName || "",
+        partyCode: party?.partyCode || "",
+        newStatus: "LEFT",
+        receiverName: leftByName,
       });
 
       return res.json(updated);
@@ -539,6 +574,14 @@ export async function registerRoutes(
         arrivedByName,
       });
 
+      io.emit("dispatch-status-updated", {
+        dispatch: updated,
+        partyName: result.party.partyName,
+        partyCode: result.party.partyCode,
+        newStatus: "ARRIVED",
+        receiverName: arrivedByName,
+      });
+
       return res.json(updated);
     } catch (error) {
       console.error("Site arrived error:", error);
@@ -584,6 +627,14 @@ export async function registerRoutes(
         status: "LEFT",
         leftAt: new Date(),
         leftByName,
+      });
+
+      io.emit("dispatch-status-updated", {
+        dispatch: updated,
+        partyName: result.party.partyName,
+        partyCode: result.party.partyCode,
+        newStatus: "LEFT",
+        receiverName: leftByName,
       });
 
       return res.json(updated);
