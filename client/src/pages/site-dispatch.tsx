@@ -12,12 +12,15 @@ import { toast } from "sonner";
 
 type DispatchStatus = "DISPATCHED" | "ARRIVED" | "LEFT";
 
+type PartyStatus = "ACTIVE" | "INACTIVE" | "CLOSED";
+
 type Dispatch = {
   id: string;
   challanNo: string;
   partyId: string;
   partyName: string;
-  projectName: string;
+  partyCode: string;
+  orderRefNo?: string;
   siteName: string;
   vehicleNo: string;
   loadMT: number;
@@ -32,10 +35,11 @@ type Dispatch = {
 
 type Party = {
   id: string;
-  name: string;
-  projectName: string;
-  totalRequirementMT: number;
-  activeAccess: boolean;
+  partyName: string;
+  partyCode: string;
+  orderRefNo?: string;
+  totalRequiredMT: number;
+  status: PartyStatus;
   accessId: string;
 };
 
@@ -51,6 +55,12 @@ type NotificationEvent = {
 
 function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+}
+
+function clampNum(v: string) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round(n * 100) / 100);
 }
 
 function beep() {
@@ -75,10 +85,22 @@ function beep() {
   }
 }
 
-function pushLocalNotification(
+function notifyBrowser(title: string, body: string) {
+  try {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    // eslint-disable-next-line no-new
+    new Notification(title, { body, silent: false });
+  } catch {
+    // ignore
+  }
+}
+
+function pushNotification(
   side: "ADMIN" | "SITE",
   title: string,
   message: string,
+  prev: NotificationEvent[],
   meta?: Partial<Pick<NotificationEvent, "dispatchId" | "partyId">>,
 ) {
   const entry: NotificationEvent = {
@@ -91,41 +113,39 @@ function pushLocalNotification(
     partyId: meta?.partyId,
   };
 
-  const key = "df_notifications";
-  const prev = JSON.parse(localStorage.getItem(key) || "[]") as NotificationEvent[];
-  const next = [entry, ...prev].slice(0, 80);
-  localStorage.setItem(key, JSON.stringify(next));
+  const next = [entry, ...prev].slice(0, 200);
+  localStorage.setItem("df_notifications_v2", JSON.stringify(next));
 
   if (side === "SITE") {
     toast(title, { description: message });
   }
+
   beep();
+  notifyBrowser(title, message);
 
   try {
     window.dispatchEvent(new CustomEvent("df:notify", { detail: entry }));
   } catch {
     // ignore
   }
-}
 
-function clampNum(v: string) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.round(n * 100) / 100);
+  return next;
 }
 
 function loadState() {
-  const partiesKey = "df_parties_v1";
-  const dispatchesKey = "df_dispatches_v1";
+  const partiesKey = "df_parties_v2";
+  const dispatchesKey = "df_dispatches_v2";
+  const notifsKey = "df_notifications_v2";
 
   const parties = (JSON.parse(localStorage.getItem(partiesKey) || "null") as Party[] | null) ?? [];
   const dispatches = (JSON.parse(localStorage.getItem(dispatchesKey) || "null") as Dispatch[] | null) ?? [];
+  const notifications = (JSON.parse(localStorage.getItem(notifsKey) || "null") as NotificationEvent[] | null) ?? [];
 
-  return { parties, dispatches };
+  return { parties, dispatches, notifications };
 }
 
 function saveDispatches(dispatches: Dispatch[]) {
-  localStorage.setItem("df_dispatches_v1", JSON.stringify(dispatches));
+  localStorage.setItem("df_dispatches_v2", JSON.stringify(dispatches));
 }
 
 function statusBadge(status: DispatchStatus) {
@@ -156,16 +176,20 @@ export default function SiteDispatch() {
 
   const accessId = params?.accessId ?? "";
 
-  const [{ parties: initialParties, dispatches: initialDispatches }] = useState(() => loadState());
+  const [{ parties: initialParties, dispatches: initialDispatches, notifications: initialNotifications }] = useState(() =>
+    loadState(),
+  );
   const [parties, setParties] = useState<Party[]>(initialParties);
   const [dispatches, setDispatches] = useState<Dispatch[]>(initialDispatches);
+  const [notifications, setNotifications] = useState<NotificationEvent[]>(initialNotifications);
 
   const party = useMemo(() => parties.find((p) => p.accessId === accessId), [parties, accessId]);
   const partyDispatches = useMemo(
-    () => dispatches
-      .filter((d) => d.partyId === party?.id)
-      .slice()
-      .sort((a, b) => b.createdAt - a.createdAt),
+    () =>
+      dispatches
+        .filter((d) => d.partyId === party?.id)
+        .slice()
+        .sort((a, b) => b.createdAt - a.createdAt),
     [dispatches, party?.id],
   );
 
@@ -177,23 +201,27 @@ export default function SiteDispatch() {
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "df_parties_v1" || e.key === "df_dispatches_v1") {
+      if (e.key === "df_parties_v2" || e.key === "df_dispatches_v2" || e.key === "df_notifications_v2") {
         const s = loadState();
         setParties(s.parties);
         setDispatches(s.dispatches);
+        setNotifications(s.notifications);
       }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  function persist(nextDispatches: Dispatch[]) {
+  function persist(nextDispatches: Dispatch[], nextNotifs: NotificationEvent[]) {
     setDispatches(nextDispatches);
+    setNotifications(nextNotifs);
     saveDispatches(nextDispatches);
+    localStorage.setItem("df_notifications_v2", JSON.stringify(nextNotifs));
   }
 
   function acknowledgeArrived() {
-    if (!party?.activeAccess) return;
+    if (!party) return;
+    if (party.status !== "ACTIVE") return;
     if (!active) return;
     if (active.status !== "DISPATCHED") return;
 
@@ -208,7 +236,7 @@ export default function SiteDispatch() {
       return;
     }
 
-    const next = dispatches.map((d) =>
+    const nextDispatches = dispatches.map((d) =>
       d.id === active.id
         ? {
             ...d,
@@ -220,27 +248,31 @@ export default function SiteDispatch() {
         : d,
     );
 
-    persist(next);
-
-    pushLocalNotification(
+    let nextNotifs = notifications;
+    nextNotifs = pushNotification(
       "SITE",
       "Arrival confirmed",
       `${active.challanNo} • Received ${qty.toFixed(2)} MT`,
+      nextNotifs,
       { dispatchId: active.id, partyId: active.partyId },
     );
-    pushLocalNotification(
+    nextNotifs = pushNotification(
       "ADMIN",
       "Truck arrived",
       `${active.challanNo} arrived • Received ${qty.toFixed(2)} MT • By ${name}`,
+      nextNotifs,
       { dispatchId: active.id, partyId: active.partyId },
     );
+
+    persist(nextDispatches, nextNotifs);
 
     setArrivedName("");
     setReceivedMT("");
   }
 
   function acknowledgeLeft() {
-    if (!party?.activeAccess) return;
+    if (!party) return;
+    if (party.status !== "ACTIVE") return;
     if (!active) return;
     if (active.status !== "ARRIVED") return;
 
@@ -250,7 +282,7 @@ export default function SiteDispatch() {
       return;
     }
 
-    const next = dispatches.map((d) =>
+    const nextDispatches = dispatches.map((d) =>
       d.id === active.id
         ? {
             ...d,
@@ -261,20 +293,23 @@ export default function SiteDispatch() {
         : d,
     );
 
-    persist(next);
-
-    pushLocalNotification(
+    let nextNotifs = notifications;
+    nextNotifs = pushNotification(
       "SITE",
       "Departure confirmed",
-      `${active.challanNo} • Truck left the site` ,
+      `${active.challanNo} • Truck left the site`,
+      nextNotifs,
       { dispatchId: active.id, partyId: active.partyId },
     );
-    pushLocalNotification(
+    nextNotifs = pushNotification(
       "ADMIN",
       "Truck left",
       `${active.challanNo} left • Confirmed by ${name}`,
+      nextNotifs,
       { dispatchId: active.id, partyId: active.partyId },
     );
+
+    persist(nextDispatches, nextNotifs);
 
     setLeftName("");
   }
@@ -293,7 +328,7 @@ export default function SiteDispatch() {
                   Invalid link
                 </div>
                 <div data-testid="text-site-invalid-subtitle" className="text-sm text-muted-foreground">
-                  This access link does not match any active project.
+                  This access link does not match any party/order.
                 </div>
               </div>
             </div>
@@ -315,7 +350,7 @@ export default function SiteDispatch() {
     );
   }
 
-  if (!party.activeAccess) {
+  if (party.status !== "ACTIVE") {
     return (
       <div className="min-h-screen df-grid p-4">
         <div className="mx-auto w-full max-w-xl">
@@ -329,19 +364,17 @@ export default function SiteDispatch() {
                   Access closed
                 </div>
                 <div data-testid="text-site-closed-subtitle" className="text-sm text-muted-foreground">
-                  This project has been completed and the link is no longer active.
+                  This party/order is not active. You can no longer view or act from this link.
                 </div>
               </div>
             </div>
 
             <Separator className="my-4" />
 
-            <div className="text-sm text-muted-foreground">
-              Please contact the admin team if you need a report or a reconciliation copy.
-            </div>
+            <div className="text-sm text-muted-foreground">Please contact the admin team if you need a report or reconciliation.</div>
 
             <div className="mt-4">
-              <Button data-testid="button-go-admin" variant="secondary" onClick={() => setLocation("/admin")}>
+              <Button data-testid="button-go-admin" variant="secondary" onClick={() => setLocation("/admin")}> 
                 Go to admin dashboard
               </Button>
             </div>
@@ -364,7 +397,7 @@ export default function SiteDispatch() {
                 Site Acknowledgement
               </div>
               <div data-testid="text-site-project" className="text-xs text-muted-foreground">
-                {party.projectName} • {party.name}
+                {party.partyCode} • {party.partyName}
               </div>
             </div>
           </div>
@@ -408,10 +441,7 @@ export default function SiteDispatch() {
               <Separator className="my-4" />
 
               {!active ? (
-                <div
-                  className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center"
-                  data-testid="empty-site"
-                >
+                <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center" data-testid="empty-site">
                   <Truck className="mx-auto h-10 w-10 text-muted-foreground" />
                   <div className="mt-3 font-serif text-lg">No active dispatch right now</div>
                   <div className="mt-1 text-sm text-muted-foreground">Wait for the next truck to be dispatched.</div>
@@ -432,7 +462,7 @@ export default function SiteDispatch() {
 
                     <div className="mt-2 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
                       <div data-testid="text-site-party">
-                        <span className="text-muted-foreground">Party:</span> {active.partyName}
+                        <span className="text-muted-foreground">Party:</span> {active.partyName} ({active.partyCode})
                       </div>
                       <div data-testid="text-site-site">
                         <span className="text-muted-foreground">Site:</span> {active.siteName}
@@ -491,11 +521,7 @@ export default function SiteDispatch() {
                           />
                         </div>
                       </div>
-                      <Button
-                        className="mt-4 w-full gap-2"
-                        onClick={acknowledgeArrived}
-                        data-testid="button-confirm-arrived"
-                      >
+                      <Button className="mt-4 w-full gap-2" onClick={acknowledgeArrived} data-testid="button-confirm-arrived">
                         <Check className="h-4 w-4" />
                         Confirm arrived
                       </Button>
@@ -524,24 +550,18 @@ export default function SiteDispatch() {
                           <Label htmlFor="leftTime" data-testid="label-left-time">
                             Left time (auto)
                           </Label>
-                          <Input id="leftTime" readOnly value={format(Date.now(), "dd MMM • HH:mm")}
-                            data-testid="input-left-time" />
+                          <Input
+                            id="leftTime"
+                            readOnly
+                            value={format(Date.now(), "dd MMM • HH:mm")}
+                            data-testid="input-left-time"
+                          />
                         </div>
                       </div>
-                      <Button
-                        className="mt-4 w-full gap-2"
-                        onClick={acknowledgeLeft}
-                        data-testid="button-confirm-left"
-                      >
+                      <Button className="mt-4 w-full gap-2" onClick={acknowledgeLeft} data-testid="button-confirm-left">
                         <Check className="h-4 w-4" />
                         Confirm truck left
                       </Button>
-                    </div>
-                  ) : null}
-
-                  {active.status === "LEFT" ? (
-                    <div className="rounded-2xl border border-border/70 bg-emerald-500/10 p-4 text-sm text-emerald-800" data-testid="text-site-complete">
-                      This dispatch is completed. Please wait for the next truck.
                     </div>
                   ) : null}
                 </div>
@@ -557,7 +577,7 @@ export default function SiteDispatch() {
                     Dispatch history
                   </h2>
                   <p data-testid="text-site-history-subtitle" className="text-sm text-muted-foreground">
-                    Recent challans for this project.
+                    Recent challans for this party/order.
                   </p>
                 </div>
                 <Badge className="df-pill" variant="secondary" data-testid="badge-site-project">
@@ -581,7 +601,7 @@ export default function SiteDispatch() {
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           {statusBadge(d.status)}
-                          <Badge className="df-pill" variant="secondary" data-testid={`badge-site-history-vehicle-${d.id}`}>
+                          <Badge className="df-pill" variant="secondary" data-testid={`badge-site-history-vehicle-${d.id}`}> 
                             <Truck className="mr-1 h-3.5 w-3.5" />
                             {d.vehicleNo}
                           </Badge>
@@ -595,7 +615,7 @@ export default function SiteDispatch() {
 
                     {d.arrivedAt ? (
                       <div className="mt-3 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">
-                        <div data-testid={`text-site-history-arrived-${d.id}`}>
+                        <div data-testid={`text-site-history-arrived-${d.id}`}> 
                           Arrived {format(d.arrivedAt, "HH:mm")} • {d.arrivedByName} • Rec {(d.receivedMT ?? 0).toFixed(2)} MT
                         </div>
                       </div>
@@ -609,13 +629,10 @@ export default function SiteDispatch() {
                 ))}
 
                 {partyDispatches.length === 0 ? (
-                  <div
-                    className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center"
-                    data-testid="empty-site-history"
-                  >
+                  <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-10 text-center" data-testid="empty-site-history">
                     <Truck className="mx-auto h-10 w-10 text-muted-foreground" />
                     <div className="mt-3 font-serif text-lg">No dispatches yet</div>
-                    <div className="mt-1 text-sm text-muted-foreground">This project has no challans created in this browser.</div>
+                    <div className="mt-1 text-sm text-muted-foreground">This party/order has no challans created in this browser.</div>
                   </div>
                 ) : null}
               </div>
@@ -623,10 +640,10 @@ export default function SiteDispatch() {
 
             <Card className="df-card mt-6 p-5">
               <div className="text-sm font-medium" data-testid="text-site-notice-title">
-                Notifications (prototype)
+                Notifications (preview mode)
               </div>
               <div className="mt-2 text-sm text-muted-foreground" data-testid="text-site-notice">
-                This mockup plays an alert sound + toast locally. Real push notifications (across devices) need a backend and a push provider.
+                This page triggers sound + in-app notifications; enable browser notifications in the Admin tab for system alerts.
               </div>
             </Card>
           </section>

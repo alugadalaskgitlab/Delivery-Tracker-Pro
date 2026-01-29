@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Activity,
@@ -7,7 +7,6 @@ import {
   ClipboardList,
   FileText,
   Filter,
-  Hash,
   Link2,
   MapPin,
   PackageOpen,
@@ -15,6 +14,7 @@ import {
   Search,
   Shield,
   Truck,
+  Users,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -33,12 +33,15 @@ const APP_NAME = "DispatchFlow";
 
 type DispatchStatus = "DISPATCHED" | "ARRIVED" | "LEFT";
 
+type PartyStatus = "ACTIVE" | "INACTIVE" | "CLOSED";
+
 type Dispatch = {
   id: string;
   challanNo: string;
   partyId: string;
   partyName: string;
-  projectName: string;
+  partyCode: string;
+  orderRefNo?: string;
   siteName: string;
   vehicleNo: string;
   loadMT: number;
@@ -54,10 +57,11 @@ type Dispatch = {
 
 type Party = {
   id: string;
-  name: string;
-  projectName: string;
-  totalRequirementMT: number;
-  activeAccess: boolean;
+  partyName: string;
+  partyCode: string;
+  orderRefNo?: string;
+  totalRequiredMT: number;
+  status: PartyStatus;
   accessId: string;
   reconciledMT: number;
   invoicedMT: number;
@@ -77,10 +81,22 @@ function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
 }
 
-function formatChallan(n: number) {
-  const yy = new Date().getFullYear().toString().slice(-2);
-  const mm = String(new Date().getMonth() + 1).padStart(2, "0");
-  return `DC-${yy}${mm}-${String(n).padStart(5, "0")}`;
+function safeUpper(s: string) {
+  return s.replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+function slugify(s: string) {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 64);
+}
+
+function clampNum(v: string) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round(n * 100) / 100);
 }
 
 function beep() {
@@ -105,10 +121,26 @@ function beep() {
   }
 }
 
-function pushLocalNotification(
+function formatChallan(partyCode: string, seq: number) {
+  return `${partyCode}-${String(seq).padStart(4, "0")}`;
+}
+
+function notifyBrowser(title: string, body: string) {
+  try {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    // eslint-disable-next-line no-new
+    new Notification(title, { body, silent: false });
+  } catch {
+    // ignore
+  }
+}
+
+function pushNotification(
   side: "ADMIN" | "SITE",
   title: string,
   message: string,
+  prev: NotificationEvent[],
   meta?: Partial<Pick<NotificationEvent, "dispatchId" | "partyId">>,
 ) {
   const entry: NotificationEvent = {
@@ -121,21 +153,84 @@ function pushLocalNotification(
     partyId: meta?.partyId,
   };
 
-  const key = "df_notifications";
-  const prev = JSON.parse(localStorage.getItem(key) || "[]") as NotificationEvent[];
-  const next = [entry, ...prev].slice(0, 80);
-  localStorage.setItem(key, JSON.stringify(next));
+  const next = [entry, ...prev].slice(0, 200);
+  localStorage.setItem("df_notifications_v2", JSON.stringify(next));
 
   if (side === "ADMIN") {
     toast(title, { description: message });
   }
+
   beep();
+  notifyBrowser(title, message);
 
   try {
     window.dispatchEvent(new CustomEvent("df:notify", { detail: entry }));
   } catch {
     // ignore
   }
+
+  return next;
+}
+
+function getInitialParties(): Party[] {
+  return [
+    {
+      id: "party_aurora",
+      partyName: "Aurora Infra (PMC)",
+      partyCode: "AURORA",
+      orderRefNo: "WO-ASP-001",
+      totalRequiredMT: 2000,
+      status: "ACTIVE",
+      accessId: "aurora",
+      reconciledMT: 0,
+      invoicedMT: 0,
+    },
+    {
+      id: "party_brookfield",
+      partyName: "Brookfield Projects",
+      partyCode: "BROOK",
+      orderRefNo: "REF-TB-42",
+      totalRequiredMT: 1200,
+      status: "ACTIVE",
+      accessId: "brook",
+      reconciledMT: 0,
+      invoicedMT: 0,
+    },
+  ];
+}
+
+function loadState() {
+  const partiesKey = "df_parties_v2";
+  const dispatchesKey = "df_dispatches_v2";
+  const seqKey = "df_party_seq_v2";
+  const notifsKey = "df_notifications_v2";
+
+  const parties = (JSON.parse(localStorage.getItem(partiesKey) || "null") as Party[] | null) ?? getInitialParties();
+  const dispatches = (JSON.parse(localStorage.getItem(dispatchesKey) || "null") as Dispatch[] | null) ?? [];
+  const seq = (JSON.parse(localStorage.getItem(seqKey) || "null") as Record<string, number> | null) ?? {};
+  const notifications = (JSON.parse(localStorage.getItem(notifsKey) || "null") as NotificationEvent[] | null) ?? [];
+
+  return { parties, dispatches, seq, notifications };
+}
+
+function saveState(
+  parties: Party[],
+  dispatches: Dispatch[],
+  seq: Record<string, number>,
+  notifications: NotificationEvent[],
+) {
+  localStorage.setItem("df_parties_v2", JSON.stringify(parties));
+  localStorage.setItem("df_dispatches_v2", JSON.stringify(dispatches));
+  localStorage.setItem("df_party_seq_v2", JSON.stringify(seq));
+  localStorage.setItem("df_notifications_v2", JSON.stringify(notifications));
+}
+
+function getPartyTotals(dispatches: Dispatch[], partyId: string) {
+  const byParty = dispatches.filter((d) => d.partyId === partyId);
+  const dispatched = byParty.reduce((sum, d) => sum + d.loadMT, 0);
+  const received = byParty.reduce((sum, d) => sum + (d.receivedMT ?? 0), 0);
+  const leftCount = byParty.filter((d) => d.status === "LEFT").length;
+  return { dispatched, received, leftCount, count: byParty.length };
 }
 
 function statusBadge(status: DispatchStatus) {
@@ -160,84 +255,32 @@ function statusBadge(status: DispatchStatus) {
   );
 }
 
-function clampNum(v: string) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.round(n * 100) / 100);
-}
-
-function safeUpper(s: string) {
-  return s.replace(/\s+/g, " ").trim().toUpperCase();
-}
-
-function getInitialParties(): Party[] {
-  return [
-    {
-      id: "party_aurora",
-      name: "Aurora Infra (PMC)",
-      projectName: "Aurora Smart Park",
-      totalRequirementMT: 2000,
-      activeAccess: true,
-      accessId: "aurora-smart-park",
-      reconciledMT: 0,
-      invoicedMT: 0,
-    },
-    {
-      id: "party_brookfield",
-      name: "Brookfield Projects",
-      projectName: "Brookfield Tower B",
-      totalRequirementMT: 1200,
-      activeAccess: true,
-      accessId: "brookfield-tower-b",
-      reconciledMT: 0,
-      invoicedMT: 0,
-    },
-  ];
-}
-
-function loadState() {
-  const partiesKey = "df_parties_v1";
-  const dispatchesKey = "df_dispatches_v1";
-  const seqKey = "df_challan_seq_v1";
-
-  const parties = (JSON.parse(localStorage.getItem(partiesKey) || "null") as Party[] | null) ?? getInitialParties();
-  const dispatches = (JSON.parse(localStorage.getItem(dispatchesKey) || "null") as Dispatch[] | null) ?? [];
-  const seq = Number(localStorage.getItem(seqKey) || "0") || 0;
-
-  return { parties, dispatches, seq };
-}
-
-function saveState(parties: Party[], dispatches: Dispatch[], seq: number) {
-  localStorage.setItem("df_parties_v1", JSON.stringify(parties));
-  localStorage.setItem("df_dispatches_v1", JSON.stringify(dispatches));
-  localStorage.setItem("df_challan_seq_v1", String(seq));
-}
-
-function getPartyTotals(dispatches: Dispatch[], partyId: string) {
-  const byParty = dispatches.filter((d) => d.partyId === partyId);
-  const dispatched = byParty.reduce((sum, d) => sum + d.loadMT, 0);
-  const received = byParty.reduce((sum, d) => sum + (d.receivedMT ?? 0), 0);
-  const leftCount = byParty.filter((d) => d.status === "LEFT").length;
-  return { dispatched, received, leftCount, count: byParty.length };
-}
-
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
 
-  const [{ parties: initialParties, dispatches: initialDispatches, seq: initialSeq }] = useState(() => loadState());
+  const [{ parties: initialParties, dispatches: initialDispatches, seq: initialSeq, notifications: initialNotifications }] =
+    useState(() => loadState());
+
   const [parties, setParties] = useState<Party[]>(initialParties);
   const [dispatches, setDispatches] = useState<Dispatch[]>(initialDispatches);
-  const [seq, setSeq] = useState<number>(initialSeq);
+  const [seqByParty, setSeqByParty] = useState<Record<string, number>>(initialSeq);
+  const [notifications, setNotifications] = useState<NotificationEvent[]>(initialNotifications);
 
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | DispatchStatus>("ALL");
   const [partyFilter, setPartyFilter] = useState<string>("ALL");
 
-  const [partyId, setPartyId] = useState(parties[0]?.id ?? "");
+  const [dispatchPartyId, setDispatchPartyId] = useState(parties[0]?.id ?? "");
   const [siteName, setSiteName] = useState("");
   const [loadMT, setLoadMT] = useState("");
   const [vehicleNo, setVehicleNo] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [newPartyName, setNewPartyName] = useState("");
+  const [newPartyCode, setNewPartyCode] = useState("");
+  const [newOrderRefNo, setNewOrderRefNo] = useState("");
+  const [newTotalRequired, setNewTotalRequired] = useState("");
+  const [newStatus, setNewStatus] = useState<PartyStatus>("ACTIVE");
 
   const shareBase = useMemo(() => {
     try {
@@ -246,6 +289,8 @@ export default function AdminDashboard() {
       return "/site/";
     }
   }, []);
+
+  const partyById = useMemo(() => new Map(parties.map((p) => [p.id, p])), [parties]);
 
   const activeCount = useMemo(() => dispatches.filter((d) => d.status !== "LEFT").length, [dispatches]);
 
@@ -258,24 +303,67 @@ export default function AdminDashboard() {
         if (statusFilter !== "ALL" && d.status !== statusFilter) return false;
         if (partyFilter !== "ALL" && d.partyId !== partyFilter) return false;
         if (!needle) return true;
-        const hay = `${d.challanNo} ${d.partyName} ${d.projectName} ${d.siteName} ${d.vehicleNo}`.toLowerCase();
+        const hay = `${d.challanNo} ${d.partyName} ${d.partyCode} ${d.siteName} ${d.vehicleNo}`.toLowerCase();
         return hay.includes(needle);
       });
   }, [dispatches, q, statusFilter, partyFilter]);
 
-  const partyById = useMemo(() => new Map(parties.map((p) => [p.id, p])), [parties]);
+  const notifCount = useMemo(() => notifications.filter((n) => n.side === "ADMIN").length, [notifications]);
 
-  function persist(nextParties: Party[], nextDispatches: Dispatch[], nextSeq = seq) {
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (
+        e.key === "df_parties_v2" ||
+        e.key === "df_dispatches_v2" ||
+        e.key === "df_party_seq_v2" ||
+        e.key === "df_notifications_v2"
+      ) {
+        const s = loadState();
+        setParties(s.parties);
+        setDispatches(s.dispatches);
+        setSeqByParty(s.seq);
+        setNotifications(s.notifications);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  function persist(nextParties: Party[], nextDispatches: Dispatch[], nextSeq: Record<string, number>, nextNotifs: NotificationEvent[]) {
     setParties(nextParties);
     setDispatches(nextDispatches);
-    setSeq(nextSeq);
-    saveState(nextParties, nextDispatches, nextSeq);
+    setSeqByParty(nextSeq);
+    setNotifications(nextNotifs);
+    saveState(nextParties, nextDispatches, nextSeq, nextNotifs);
   }
 
-  function canCreate() {
-    const p = partyById.get(partyId);
+  function ensureNotifPermission() {
+    try {
+      if (!("Notification" in window)) {
+        toast("Browser notifications unavailable", { description: "This browser does not support notifications." });
+        return;
+      }
+      if (Notification.permission === "granted") {
+        toast("Notifications enabled", { description: "You will receive browser notifications in this tab." });
+        return;
+      }
+      Notification.requestPermission().then((p) => {
+        if (p === "granted") {
+          toast("Notifications enabled", { description: "You will receive browser notifications in this tab." });
+          notifyBrowser("DispatchFlow", "Notifications are enabled.");
+        } else {
+          toast("Notifications not enabled", { description: "You can still use the in-app Notifications Log." });
+        }
+      });
+    } catch {
+      toast("Notifications not available", { description: "You can still use the in-app Notifications Log." });
+    }
+  }
+
+  function canCreateDispatch() {
+    const p = partyById.get(dispatchPartyId);
     if (!p) return false;
-    if (!p.activeAccess) return false;
+    if (p.status !== "ACTIVE") return false;
     if (!siteName.trim()) return false;
     if (!vehicleNo.trim()) return false;
     const m = clampNum(loadMT);
@@ -284,18 +372,20 @@ export default function AdminDashboard() {
   }
 
   function onCreateDispatch() {
-    if (!canCreate()) return;
+    if (!canCreateDispatch()) return;
 
-    const p = partyById.get(partyId)!;
-    const nextSeq = seq + 1;
-    const challanNo = formatChallan(nextSeq);
+    const p = partyById.get(dispatchPartyId)!;
+    const current = seqByParty[p.id] ?? 0;
+    const nextSeqForParty = current + 1;
+    const challanNo = formatChallan(p.partyCode, nextSeqForParty);
 
     const d: Dispatch = {
       id: uid("disp"),
       challanNo,
       partyId: p.id,
-      partyName: p.name,
-      projectName: p.projectName,
+      partyName: p.partyName,
+      partyCode: p.partyCode,
+      orderRefNo: p.orderRefNo,
       siteName: siteName.trim(),
       vehicleNo: safeUpper(vehicleNo),
       loadMT: clampNum(loadMT),
@@ -305,25 +395,30 @@ export default function AdminDashboard() {
     };
 
     const nextDispatches = [d, ...dispatches];
-    persist(parties, nextDispatches, nextSeq);
+    const nextSeqByParty = { ...seqByParty, [p.id]: nextSeqForParty };
+
+    let nextNotifs = notifications;
+    nextNotifs = pushNotification(
+      "ADMIN",
+      "Dispatch created",
+      `${d.challanNo} • ${d.partyName} • ${d.loadMT.toFixed(2)} MT • ${d.vehicleNo}`,
+      nextNotifs,
+      { dispatchId: d.id, partyId: d.partyId },
+    );
+    nextNotifs = pushNotification(
+      "SITE",
+      "Truck dispatched",
+      `${d.challanNo} is on the way. Vehicle: ${d.vehicleNo}`,
+      nextNotifs,
+      { dispatchId: d.id, partyId: d.partyId },
+    );
+
+    persist(parties, nextDispatches, nextSeqByParty, nextNotifs);
 
     setSiteName("");
     setLoadMT("");
     setVehicleNo("");
     setNotes("");
-
-    pushLocalNotification(
-      "ADMIN",
-      "Dispatch created",
-      `${d.challanNo} • ${d.partyName} • ${d.loadMT} MT • ${d.vehicleNo}`,
-      { dispatchId: d.id, partyId: d.partyId },
-    );
-    pushLocalNotification(
-      "SITE",
-      "Truck dispatched",
-      `${d.challanNo} is on the way. Vehicle: ${d.vehicleNo}`,
-      { dispatchId: d.id, partyId: d.partyId },
-    );
   }
 
   function copyLink(accessId: string) {
@@ -338,12 +433,12 @@ export default function AdminDashboard() {
       });
   }
 
-  function setPartyAccess(partyIdToUpdate: string, active: boolean) {
-    const nextParties = parties.map((p) => (p.id === partyIdToUpdate ? { ...p, activeAccess: active } : p));
-    persist(nextParties, dispatches);
+  function setPartyStatus(partyIdToUpdate: string, status: PartyStatus) {
+    const nextParties = parties.map((p) => (p.id === partyIdToUpdate ? { ...p, status } : p));
+    persist(nextParties, dispatches, seqByParty, notifications);
   }
 
-  function reconcileAndComplete(partyIdToUpdate: string) {
+  function reconcileAndInvoice(partyIdToUpdate: string) {
     const p = partyById.get(partyIdToUpdate);
     if (!p) return;
     const totals = getPartyTotals(dispatches, partyIdToUpdate);
@@ -353,24 +448,79 @@ export default function AdminDashboard() {
             ...x,
             reconciledMT: totals.received,
             invoicedMT: totals.received,
-            activeAccess: false,
+            status: "CLOSED" as const,
           }
         : x,
     );
-    persist(nextParties, dispatches);
-    pushLocalNotification("ADMIN", "Project completed", `${p.projectName} marked invoiced & link deactivated.`, {
-      partyId: p.id,
-    });
-    pushLocalNotification("SITE", "Access closed", `${p.projectName} has been completed. This link is now inactive.`, {
-      partyId: p.id,
-    });
+
+    let nextNotifs = notifications;
+    nextNotifs = pushNotification(
+      "ADMIN",
+      "Reconciled & invoiced",
+      `${p.partyCode} closed • Link deactivated`,
+      nextNotifs,
+      { partyId: p.id },
+    );
+    nextNotifs = pushNotification(
+      "SITE",
+      "Access closed",
+      `${p.partyCode} has been closed. This link is now inactive.`,
+      nextNotifs,
+      { partyId: p.id },
+    );
+
+    persist(nextParties, dispatches, seqByParty, nextNotifs);
   }
 
-  const notifCount = useMemo(() => {
-    const key = "df_notifications";
-    const prev = JSON.parse(localStorage.getItem(key) || "[]") as NotificationEvent[];
-    return prev.filter((n) => n.side === "ADMIN").length;
-  }, [dispatches, parties]);
+  function canCreateParty() {
+    const name = newPartyName.trim();
+    const code = safeUpper(newPartyCode).replace(/[^A-Z0-9]/g, "");
+    const mt = clampNum(newTotalRequired);
+    if (!name) return false;
+    if (!code) return false;
+    if (mt <= 0) return false;
+    if (parties.some((p) => p.partyCode === code)) return false;
+    return true;
+  }
+
+  function createParty() {
+    if (!canCreateParty()) return;
+    const name = newPartyName.trim();
+    const code = safeUpper(newPartyCode).replace(/[^A-Z0-9]/g, "");
+    const mt = clampNum(newTotalRequired);
+    const ref = newOrderRefNo.trim() || undefined;
+
+    const p: Party = {
+      id: uid("party"),
+      partyName: name,
+      partyCode: code,
+      orderRefNo: ref,
+      totalRequiredMT: mt,
+      status: newStatus,
+      accessId: slugify(code || name) || uid("access"),
+      reconciledMT: 0,
+      invoicedMT: 0,
+    };
+
+    const nextParties = [p, ...parties];
+
+    let nextNotifs = notifications;
+    nextNotifs = pushNotification(
+      "ADMIN",
+      "Party/Order created",
+      `${p.partyCode} • ${p.partyName} • Req ${p.totalRequiredMT} MT`,
+      nextNotifs,
+      { partyId: p.id },
+    );
+
+    persist(nextParties, dispatches, seqByParty, nextNotifs);
+
+    setNewPartyName("");
+    setNewPartyCode("");
+    setNewOrderRefNo("");
+    setNewTotalRequired("");
+    setNewStatus("ACTIVE");
+  }
 
   return (
     <div className="min-h-screen df-grid">
@@ -385,7 +535,7 @@ export default function AdminDashboard() {
                 {APP_NAME}
               </div>
               <div data-testid="text-app-subtitle" className="text-xs text-muted-foreground">
-                Dispatch + site acknowledgements • challans • progress
+                Dispatch + site acknowledgements • challans by party • reconciliation
               </div>
             </div>
           </div>
@@ -395,24 +545,24 @@ export default function AdminDashboard() {
               <Activity className="h-4 w-4" />
               <span data-testid="text-active-count">{activeCount} active</span>
             </div>
+            <Button variant="secondary" className="gap-2" data-testid="button-enable-notifications" onClick={ensureNotifPermission}>
+              <Bell className="h-4 w-4" />
+              Enable alerts
+            </Button>
             <Button
               variant="secondary"
               className="gap-2"
               data-testid="button-notifications"
               onClick={() => {
-                const key = "df_notifications";
-                const all = (JSON.parse(localStorage.getItem(key) || "[]") as NotificationEvent[]).slice(0, 8);
+                const last = notifications.filter((n) => n.side === "ADMIN").slice(0, 8);
                 toast("Recent updates", {
-                  description: all.length
-                    ? all
-                        .map((n) => `${format(n.ts, "HH:mm")} • ${n.title}`)
-                        .join("\n")
+                  description: last.length
+                    ? last.map((n) => `${format(n.ts, "HH:mm")} • ${n.title}`).join("\n")
                     : "No notifications yet.",
                 });
               }}
             >
-              <Bell className="h-4 w-4" />
-              <span className="hidden sm:inline">Updates</span>
+              <span className="hidden sm:inline">Log</span>
               <span
                 data-testid="text-notification-count"
                 className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] text-primary"
@@ -439,7 +589,7 @@ export default function AdminDashboard() {
                         New Dispatch
                       </h1>
                       <p data-testid="text-new-dispatch-hint" className="text-sm text-muted-foreground">
-                        Create a dispatch — challan number & time are auto-generated.
+                        Select party/order — challan is auto-generated per party.
                       </p>
                     </div>
                   </div>
@@ -447,8 +597,9 @@ export default function AdminDashboard() {
 
                 <div className="hidden rounded-2xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground shadow-sm md:block">
                   <div className="flex items-center gap-2">
-                    <Hash className="h-4 w-4" />
-                    <span data-testid="text-challan-format">DC-YYMM-00001</span>
+                    <span data-testid="text-challan-format" className="font-mono">
+                      PARTYCODE-0001
+                    </span>
                   </div>
                 </div>
               </div>
@@ -458,16 +609,17 @@ export default function AdminDashboard() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="party" data-testid="label-party">
-                    Project / Party
+                    Party / Order
                   </Label>
-                  <Select value={partyId} onValueChange={setPartyId}>
+                  <Select value={dispatchPartyId} onValueChange={setDispatchPartyId}>
                     <SelectTrigger id="party" data-testid="select-party">
                       <SelectValue placeholder="Select a party" />
                     </SelectTrigger>
                     <SelectContent>
                       {parties.map((p) => (
                         <SelectItem key={p.id} value={p.id} data-testid={`select-item-party-${p.id}`}>
-                          {p.projectName} — {p.name}
+                          {p.partyCode} — {p.partyName}
+                          {p.orderRefNo ? ` (${p.orderRefNo})` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -519,12 +671,7 @@ export default function AdminDashboard() {
                     <Label htmlFor="now" data-testid="label-auto-time">
                       Dispatch time (auto)
                     </Label>
-                    <Input
-                      id="now"
-                      readOnly
-                      value={format(Date.now(), "dd MMM yyyy • HH:mm")}
-                      data-testid="input-dispatch-time"
-                    />
+                    <Input id="now" readOnly value={format(Date.now(), "dd MMM yyyy • HH:mm")} data-testid="input-dispatch-time" />
                   </div>
                 </div>
 
@@ -545,12 +692,12 @@ export default function AdminDashboard() {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-xs text-muted-foreground">
                     <div data-testid="text-dispatch-rules">Lifecycle: DISPATCHED → ARRIVED → LEFT</div>
-                    <div data-testid="text-site-link-rules">Site actions require name + timestamp is recorded.</div>
+                    <div data-testid="text-site-link-rules">Site actions require name + received quantity + timestamps.</div>
                   </div>
                   <Button
                     className="gap-2"
                     onClick={onCreateDispatch}
-                    disabled={!canCreate()}
+                    disabled={!canCreateDispatch()}
                     data-testid="button-create-dispatch"
                   >
                     <Plus className="h-4 w-4" />
@@ -564,25 +711,121 @@ export default function AdminDashboard() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 data-testid="text-parties-title" className="font-serif text-lg">
-                    Projects & Access Links
+                    Parties / Orders (Master)
                   </h2>
                   <p data-testid="text-parties-subtitle" className="text-sm text-muted-foreground">
-                    Track cumulative dispatched quantity and control external link access.
+                    Create & manage parties/orders, requirement tracking, and external access.
                   </p>
                 </div>
                 <div className="hidden items-center gap-2 rounded-2xl border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground shadow-sm md:flex">
-                  <Shield className="h-4 w-4" />
-                  Access control
+                  <Users className="h-4 w-4" />
+                  Master
                 </div>
               </div>
 
               <Separator className="my-4" />
 
-              <div className="space-y-4">
+              <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm" data-testid="card-party-create">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label data-testid="label-party-name" htmlFor="partyName">
+                      Party Name
+                    </Label>
+                    <Input
+                      id="partyName"
+                      value={newPartyName}
+                      onChange={(e) => setNewPartyName(e.target.value)}
+                      placeholder="e.g., Skyline Contractors"
+                      data-testid="input-party-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label data-testid="label-party-code" htmlFor="partyCode">
+                      Party Code (unique)
+                    </Label>
+                    <Input
+                      id="partyCode"
+                      value={newPartyCode}
+                      onChange={(e) => setNewPartyCode(e.target.value)}
+                      placeholder="e.g., SKYLINE"
+                      data-testid="input-party-code"
+                    />
+                    <div className="text-[11px] text-muted-foreground" data-testid="text-party-code-hint">
+                      Challans will look like <span className="font-mono">{safeUpper(newPartyCode).replace(/[^A-Z0-9]/g, "") || "PARTY"}-0001</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label data-testid="label-order-ref" htmlFor="orderRef">
+                      Order / Work Ref No (optional)
+                    </Label>
+                    <Input
+                      id="orderRef"
+                      value={newOrderRefNo}
+                      onChange={(e) => setNewOrderRefNo(e.target.value)}
+                      placeholder="e.g., WO-2026-017"
+                      data-testid="input-order-ref"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label data-testid="label-total-required" htmlFor="totalRequired">
+                      Total Required (MT)
+                    </Label>
+                    <Input
+                      id="totalRequired"
+                      value={newTotalRequired}
+                      onChange={(e) => setNewTotalRequired(e.target.value)}
+                      inputMode="decimal"
+                      placeholder="e.g., 2000"
+                      data-testid="input-total-required"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="grid w-full grid-cols-1 gap-3 sm:w-auto sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label data-testid="label-party-status" htmlFor="status">
+                        Status
+                      </Label>
+                      <Select value={newStatus} onValueChange={(v) => setNewStatus(v as PartyStatus)}>
+                        <SelectTrigger id="status" data-testid="select-party-status">
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ACTIVE" data-testid="select-item-status-active">
+                            Active
+                          </SelectItem>
+                          <SelectItem value="INACTIVE" data-testid="select-item-status-inactive">
+                            Inactive
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <Button className="gap-2" onClick={createParty} disabled={!canCreateParty()} data-testid="button-create-party">
+                    <Plus className="h-4 w-4" />
+                    Create party/order
+                  </Button>
+                </div>
+
+                {!canCreateParty() && (newPartyName.trim() || newPartyCode.trim() || newTotalRequired.trim()) ? (
+                  <div className="mt-3 text-xs text-muted-foreground" data-testid="text-party-create-validation">
+                    Ensure: name + unique code + required MT &gt; 0.
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-4 space-y-4">
                 {parties.map((p) => {
                   const totals = getPartyTotals(dispatches, p.id);
-                  const pct = p.totalRequirementMT > 0 ? Math.min(100, (totals.dispatched / p.totalRequirementMT) * 100) : 0;
+                  const remaining = Math.max(0, p.totalRequiredMT - totals.dispatched);
+                  const pct = p.totalRequiredMT > 0 ? Math.min(100, (totals.dispatched / p.totalRequiredMT) * 100) : 0;
                   const url = `${shareBase}${p.accessId}`;
+                  const isActive = p.status === "ACTIVE";
 
                   return (
                     <div
@@ -593,32 +836,42 @@ export default function AdminDashboard() {
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <div data-testid={`text-project-${p.id}`} className="font-medium">
-                              {p.projectName}
+                            <div data-testid={`text-party-code-${p.id}`} className="font-mono text-xs text-muted-foreground">
+                              {p.partyCode}
                             </div>
-                            <Badge className="df-pill" variant="secondary" data-testid={`badge-party-${p.id}`}>
-                              {p.name}
-                            </Badge>
-                            {p.activeAccess ? (
-                              <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20" data-testid={`badge-access-active-${p.id}`}>
-                                Link active
+                            <div data-testid={`text-party-name-${p.id}`} className="font-medium">
+                              {p.partyName}
+                            </div>
+                            {p.orderRefNo ? (
+                              <Badge className="df-pill" variant="secondary" data-testid={`badge-party-ref-${p.id}`}>
+                                {p.orderRefNo}
+                              </Badge>
+                            ) : null}
+
+                            {p.status === "ACTIVE" ? (
+                              <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20" data-testid={`badge-party-status-active-${p.id}`}>
+                                Active
+                              </Badge>
+                            ) : p.status === "INACTIVE" ? (
+                              <Badge className="bg-slate-500/10 text-slate-700 border-slate-500/20" data-testid={`badge-party-status-inactive-${p.id}`}>
+                                Inactive
                               </Badge>
                             ) : (
-                              <Badge className="bg-slate-500/10 text-slate-700 border-slate-500/20" data-testid={`badge-access-inactive-${p.id}`}>
-                                Link inactive
+                              <Badge className="bg-primary/10 text-primary border-primary/20" data-testid={`badge-party-status-closed-${p.id}`}>
+                                Closed
                               </Badge>
                             )}
                           </div>
 
                           <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
-                            <div data-testid={`text-total-required-${p.id}`}>
-                              Required: <span className="font-medium text-foreground">{p.totalRequirementMT} MT</span>
+                            <div data-testid={`text-required-${p.id}`}>
+                              Required: <span className="font-medium text-foreground">{p.totalRequiredMT} MT</span>
                             </div>
                             <div data-testid={`text-dispatched-${p.id}`}>
                               Dispatched: <span className="font-medium text-foreground">{totals.dispatched.toFixed(2)} MT</span>
                             </div>
-                            <div data-testid={`text-received-${p.id}`}>
-                              Received: <span className="font-medium text-foreground">{totals.received.toFixed(2)} MT</span>
+                            <div data-testid={`text-remaining-${p.id}`}>
+                              Remaining: <span className="font-medium text-foreground">{remaining.toFixed(2)} MT</span>
                             </div>
                             <div data-testid={`text-trips-${p.id}`}>
                               Trips: <span className="font-medium text-foreground">{totals.count}</span>
@@ -633,7 +886,7 @@ export default function AdminDashboard() {
                               />
                             </div>
                             <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                              <span data-testid={`text-progress-${p.id}`}>{pct.toFixed(0)}% of requirement dispatched</span>
+                              <span data-testid={`text-progress-${p.id}`}>{pct.toFixed(0)}% dispatched</span>
                               <span data-testid={`text-link-slug-${p.id}`}>/site/{p.accessId}</span>
                             </div>
                           </div>
@@ -646,7 +899,7 @@ export default function AdminDashboard() {
                               className="gap-2"
                               data-testid={`button-copy-link-${p.id}`}
                               onClick={() => copyLink(p.accessId)}
-                              disabled={!p.activeAccess}
+                              disabled={!isActive}
                             >
                               <Link2 className="h-4 w-4" />
                               Copy link
@@ -656,7 +909,7 @@ export default function AdminDashboard() {
                               className="gap-2"
                               data-testid={`button-open-link-${p.id}`}
                               onClick={() => setLocation(`/site/${p.accessId}`)}
-                              disabled={!p.activeAccess}
+                              disabled={!isActive}
                             >
                               <MapPin className="h-4 w-4" />
                               Open
@@ -665,11 +918,12 @@ export default function AdminDashboard() {
 
                           <div className="mt-1 flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-xs">
                             <div className="flex items-center gap-2 text-muted-foreground">
-                              <span data-testid={`text-access-toggle-${p.id}`}>Access</span>
+                              <span data-testid={`text-access-toggle-${p.id}`}>Active</span>
                             </div>
                             <Switch
-                              checked={p.activeAccess}
-                              onCheckedChange={(v) => setPartyAccess(p.id, v)}
+                              checked={p.status === "ACTIVE"}
+                              onCheckedChange={(v) => setPartyStatus(p.id, v ? "ACTIVE" : "INACTIVE")}
+                              disabled={p.status === "CLOSED"}
                               data-testid={`switch-access-${p.id}`}
                             />
                           </div>
@@ -677,11 +931,12 @@ export default function AdminDashboard() {
                           <Button
                             className="mt-1 gap-2"
                             variant="destructive"
-                            data-testid={`button-complete-${p.id}`}
-                            onClick={() => reconcileAndComplete(p.id)}
+                            data-testid={`button-reconcile-${p.id}`}
+                            onClick={() => reconcileAndInvoice(p.id)}
+                            disabled={p.status === "CLOSED"}
                           >
                             <CheckCircle2 className="h-4 w-4" />
-                            Reconcile & complete
+                            Reconciled & invoiced
                           </Button>
 
                           <div className="text-[11px] text-muted-foreground" data-testid={`text-share-url-${p.id}`}>
@@ -692,6 +947,58 @@ export default function AdminDashboard() {
                     </div>
                   );
                 })}
+              </div>
+
+              <Separator className="my-5" />
+
+              <div className="rounded-2xl border border-border/70 bg-card/50 p-4" data-testid="panel-notifications-log">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div data-testid="text-notif-log-title" className="font-medium">
+                      Notifications Log
+                    </div>
+                    <div data-testid="text-notif-log-subtitle" className="text-xs text-muted-foreground">
+                      Preview-mode alerts: browser notification (if enabled) + sound + this log.
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    data-testid="button-clear-notifs"
+                    onClick={() => {
+                      persist(parties, dispatches, seqByParty, []);
+                      toast("Cleared", { description: "Notification log cleared." });
+                    }}
+                  >
+                    Clear
+                  </Button>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {notifications.slice(0, 10).map((n) => (
+                    <div
+                      key={n.id}
+                      className="rounded-xl border border-border/70 bg-card/60 px-3 py-2 text-xs"
+                      data-testid={`row-notif-${n.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 truncate">
+                          <span className="font-medium">{n.title}</span>
+                          <span className="text-muted-foreground"> — {n.message}</span>
+                        </div>
+                        <div className="shrink-0 text-muted-foreground">{format(n.ts, "HH:mm")}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {notifications.length === 0 ? (
+                    <div
+                      className="rounded-xl border border-dashed border-border/70 bg-card/40 p-6 text-center text-xs text-muted-foreground"
+                      data-testid="empty-notifs"
+                    >
+                      No notifications yet.
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </Card>
           </section>
@@ -704,7 +1011,7 @@ export default function AdminDashboard() {
                     Dispatches
                   </h2>
                   <p data-testid="text-active-dispatches-subtitle" className="text-sm text-muted-foreground">
-                    Live status, history, and quick reporting filters.
+                    Live status, history, and reporting filters.
                   </p>
                 </div>
 
@@ -748,15 +1055,15 @@ export default function AdminDashboard() {
 
                     <Select value={partyFilter} onValueChange={(v) => setPartyFilter(v)}>
                       <SelectTrigger className="w-[210px]" data-testid="select-party-filter">
-                        <SelectValue placeholder="Project" />
+                        <SelectValue placeholder="Party" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="ALL" data-testid="select-item-party-filter-all">
-                          All projects
+                          All parties
                         </SelectItem>
                         {parties.map((p) => (
                           <SelectItem key={p.id} value={p.id} data-testid={`select-item-party-filter-${p.id}`}>
-                            {p.projectName}
+                            {p.partyCode}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -793,10 +1100,7 @@ export default function AdminDashboard() {
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <div
-                                  data-testid={`text-challan-${d.id}`}
-                                  className="font-mono text-xs text-muted-foreground"
-                                >
+                                <div data-testid={`text-challan-${d.id}`} className="font-mono text-xs text-muted-foreground">
                                   {d.challanNo}
                                 </div>
                                 {statusBadge(d.status)}
@@ -808,13 +1112,13 @@ export default function AdminDashboard() {
 
                               <div className="mt-2 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
                                 <div data-testid={`text-party-${d.id}`} className="truncate">
-                                  <span className="text-muted-foreground">Party:</span> {d.partyName}
+                                  <span className="text-muted-foreground">Party:</span> {d.partyName} ({d.partyCode})
                                 </div>
                                 <div data-testid={`text-site-${d.id}`} className="truncate">
                                   <span className="text-muted-foreground">Site:</span> {d.siteName}
                                 </div>
-                                <div data-testid={`text-project-${d.id}`} className="truncate">
-                                  <span className="text-muted-foreground">Project:</span> {d.projectName}
+                                <div data-testid={`text-orderref-${d.id}`} className="truncate">
+                                  <span className="text-muted-foreground">Ref:</span> {d.orderRefNo ?? "—"}
                                 </div>
                                 <div data-testid={`text-load-${d.id}`}>
                                   <span className="text-muted-foreground">Load:</span> {d.loadMT.toFixed(2)} MT
@@ -843,8 +1147,8 @@ export default function AdminDashboard() {
                                 data-testid={`button-open-site-${d.id}`}
                                 onClick={() => {
                                   const p = partyById.get(d.partyId);
-                                  if (!p?.activeAccess) {
-                                    toast("Link inactive", { description: "This project has been completed / deactivated." });
+                                  if (!p || p.status !== "ACTIVE") {
+                                    toast("Link inactive", { description: "This party/order is inactive or closed." });
                                     return;
                                   }
                                   setLocation(`/site/${p.accessId}`);
@@ -901,7 +1205,7 @@ export default function AdminDashboard() {
                               </div>
                               <div className="mt-2 text-sm">
                                 <div data-testid={`text-history-party-${d.id}`}>
-                                  <span className="text-muted-foreground">{d.projectName}</span> — {d.partyName}
+                                  <span className="text-muted-foreground">{d.partyCode}</span> — {d.partyName}
                                 </div>
                                 <div data-testid={`text-history-site-${d.id}`} className="text-muted-foreground">
                                   {d.siteName}
@@ -938,7 +1242,8 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {parties.map((p) => {
                       const totals = getPartyTotals(dispatches, p.id);
-                      const remaining = Math.max(0, p.totalRequirementMT - totals.dispatched);
+                      const remaining = Math.max(0, p.totalRequiredMT - totals.dispatched);
+                      const fulfilled = remaining <= 0;
                       return (
                         <div
                           key={p.id}
@@ -947,15 +1252,15 @@ export default function AdminDashboard() {
                         >
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
-                              <div data-testid={`text-report-project-${p.id}`} className="font-medium">
-                                {p.projectName}
+                              <div data-testid={`text-report-party-${p.id}`} className="font-medium">
+                                {p.partyCode}
                               </div>
-                              <div data-testid={`text-report-party-${p.id}`} className="text-xs text-muted-foreground">
-                                {p.name}
+                              <div className="text-xs text-muted-foreground" data-testid={`text-report-name-${p.id}`}>
+                                {p.partyName}
                               </div>
                             </div>
                             <Badge className="df-pill" variant="secondary" data-testid={`badge-report-required-${p.id}`}>
-                              Req {p.totalRequirementMT} MT
+                              Req {p.totalRequiredMT} MT
                             </Badge>
                           </div>
 
@@ -972,9 +1277,9 @@ export default function AdminDashboard() {
                               <span className="text-muted-foreground">Received</span>
                               <div className="font-medium">{totals.received.toFixed(2)} MT</div>
                             </div>
-                            <div data-testid={`text-report-trips-${p.id}`}>
-                              <span className="text-muted-foreground">Trips</span>
-                              <div className="font-medium">{totals.count}</div>
+                            <div data-testid={`text-report-status-${p.id}`}>
+                              <span className="text-muted-foreground">Status</span>
+                              <div className="font-medium">{fulfilled ? "Fulfilled" : p.status}</div>
                             </div>
                           </div>
 
@@ -994,10 +1299,10 @@ export default function AdminDashboard() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 data-testid="text-demo-note-title" className="font-serif text-lg">
-                    Notifications (prototype)
+                    Notifications (preview mode)
                   </h2>
                   <p data-testid="text-demo-note" className="text-sm text-muted-foreground">
-                    This mockup plays a sound + shows toasts. True push notifications across devices require backend.
+                    Enable browser notifications for testable alerts, plus sound + in-app log fallback.
                   </p>
                 </div>
                 <Button
@@ -1006,7 +1311,8 @@ export default function AdminDashboard() {
                   data-testid="button-test-sound"
                   onClick={() => {
                     beep();
-                    toast("Test alert", { description: "Sound + toast (local prototype)." });
+                    notifyBrowser("Test alert", "Sound + browser notification (if enabled)." );
+                    toast("Test alert", { description: "Sound + toast (local preview)." });
                   }}
                 >
                   <Bell className="h-4 w-4" />
