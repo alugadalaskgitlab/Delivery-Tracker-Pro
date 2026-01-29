@@ -95,6 +95,31 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/auth/verify-owner-pin", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { pin } = req.body;
+
+      if (!pin) {
+        return res.status(400).json({ error: "PIN required" });
+      }
+
+      const storedPin = await storage.getSetting("owner_pin");
+
+      if (!storedPin) {
+        return res.status(500).json({ error: "Owner PIN not configured. Please set it in Settings." });
+      }
+
+      if (pin !== storedPin) {
+        return res.status(401).json({ error: "Invalid Owner PIN" });
+      }
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Verify owner PIN error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.post("/api/auth/site-login", async (req: Request, res: Response) => {
     try {
       const { token: siteToken } = req.body;
@@ -271,6 +296,20 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
       const partyId = Array.isArray(id) ? id[0] : id;
+      const { ownerPin } = req.body;
+
+      if (!ownerPin) {
+        return res.status(400).json({ error: "Owner PIN required" });
+      }
+
+      const storedOwnerPin = await storage.getSetting("owner_pin");
+      if (!storedOwnerPin) {
+        return res.status(500).json({ error: "Owner PIN not configured. Please set it in Settings." });
+      }
+
+      if (ownerPin !== storedOwnerPin) {
+        return res.status(401).json({ error: "Invalid Owner PIN" });
+      }
 
       const dispatchCount = await storage.getDispatchCountByParty(partyId);
       if (dispatchCount > 0) {
@@ -367,6 +406,42 @@ export async function registerRoutes(
         return res.status(400).json({ error: error.errors });
       }
       console.error("Create dispatch error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/dispatches/:id", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const dispatchId = Array.isArray(id) ? id[0] : id;
+      const { ownerPin } = req.body;
+
+      if (!ownerPin) {
+        return res.status(400).json({ error: "Owner PIN required" });
+      }
+
+      const storedOwnerPin = await storage.getSetting("owner_pin");
+      if (!storedOwnerPin) {
+        return res.status(500).json({ error: "Owner PIN not configured. Please set it in Settings." });
+      }
+
+      if (ownerPin !== storedOwnerPin) {
+        return res.status(401).json({ error: "Invalid Owner PIN" });
+      }
+
+      const dispatch = await storage.getDispatch(dispatchId);
+      if (!dispatch) {
+        return res.status(404).json({ error: "Dispatch not found" });
+      }
+
+      const deleted = await storage.deleteDispatch(dispatchId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Dispatch not found" });
+      }
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Delete dispatch error:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });

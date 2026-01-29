@@ -51,6 +51,7 @@ export interface IStorage {
   
   getDispatchCountByParty(partyId: string): Promise<number>;
   deleteParty(id: string): Promise<boolean>;
+  deleteDispatch(id: string): Promise<boolean>;
   
   getSetting(key: string): Promise<string | undefined>;
   setSetting(key: string, value: string): Promise<void>;
@@ -190,6 +191,11 @@ export class DbStorage implements IStorage {
 
   async deleteParty(id: string): Promise<boolean> {
     const result = await db.delete(parties).where(eq(parties.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async deleteDispatch(id: string): Promise<boolean> {
+    const result = await db.delete(dispatches).where(eq(dispatches.id, id)).returning();
     return result.length > 0;
   }
 

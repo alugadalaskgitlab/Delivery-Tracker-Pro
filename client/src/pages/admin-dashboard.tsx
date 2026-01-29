@@ -111,7 +111,11 @@ export default function AdminDashboard() {
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [adminPin, setAdminPin] = useState("");
   const [plantPin, setPlantPin] = useState("");
+  const [ownerPin, setOwnerPin] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
+  const [ownerPinInput, setOwnerPinInput] = useState("");
+  const [showOwnerPinDialog, setShowOwnerPinDialog] = useState(false);
+  const [pendingDeleteAction, setPendingDeleteAction] = useState<{ type: "party" | "dispatch"; id: string } | null>(null);
 
   useEffect(() => {
     const socket = io();
@@ -140,8 +144,8 @@ export default function AdminDashboard() {
     };
   }, [queryClient, toast]);
 
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [partyToDelete, setPartyToDelete] = useState<Party | null>(null);
+  const [dispatchToDelete, setDispatchToDelete] = useState<Dispatch | null>(null);
 
   const { data: parties = [], isLoading: loadingParties } = useQuery<Party[]>({
     queryKey: ["/api/parties"],
@@ -212,18 +216,44 @@ export default function AdminDashboard() {
   });
 
   const deletePartyMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, ownerPin }: { id: string; ownerPin: string }) => {
       const res = await fetch(`/api/parties/${id}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerPin }),
       });
-      if (!res.ok) throw new Error("Failed to delete party");
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to delete party");
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/parties"] });
-      setShowDeleteDialog(false);
       setPartyToDelete(null);
       toast({ title: "Success", description: "Party deleted successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteDispatchMutation = useMutation({
+    mutationFn: async ({ id, ownerPin }: { id: string; ownerPin: string }) => {
+      const res = await fetch(`/api/dispatches/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerPin }),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to delete dispatch");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
+      toast({ title: "Success", description: "Dispatch deleted successfully" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -328,15 +358,50 @@ export default function AdminDashboard() {
           body: JSON.stringify({ value: plantPin }),
         });
       }
+      if (ownerPin) {
+        await fetch("/api/settings/owner_pin", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: ownerPin }),
+        });
+      }
       toast({ title: "Success", description: "Settings saved successfully" });
       setShowSettingsDialog(false);
       setAdminPin("");
       setPlantPin("");
+      setOwnerPin("");
     } catch (error) {
       toast({ title: "Error", description: "Failed to save settings", variant: "destructive" });
     } finally {
       setSavingSettings(false);
     }
+  }
+
+  async function verifyOwnerPin() {
+    try {
+      if (pendingDeleteAction?.type === "party") {
+        deletePartyMutation.mutate({ id: pendingDeleteAction.id, ownerPin: ownerPinInput });
+      } else if (pendingDeleteAction?.type === "dispatch") {
+        deleteDispatchMutation.mutate({ id: pendingDeleteAction.id, ownerPin: ownerPinInput });
+      }
+      setShowOwnerPinDialog(false);
+      setOwnerPinInput("");
+      setPendingDeleteAction(null);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
+    }
+  }
+
+  function requestDeleteParty(party: Party) {
+    setPendingDeleteAction({ type: "party", id: party.id });
+    setPartyToDelete(party);
+    setShowOwnerPinDialog(true);
+  }
+
+  function requestDeleteDispatch(dispatch: Dispatch) {
+    setPendingDeleteAction({ type: "dispatch", id: dispatch.id });
+    setDispatchToDelete(dispatch);
+    setShowOwnerPinDialog(true);
   }
 
   function copyLink(accessId: string) {
@@ -427,7 +492,7 @@ export default function AdminDashboard() {
       <header className="bg-white border-b sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+            <h1 className="text-2xl font-bold">Command Center</h1>
             <p className="text-sm text-gray-500">Dispatch Management System</p>
           </div>
           <div className="flex items-center gap-2">
@@ -611,7 +676,7 @@ export default function AdminDashboard() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => { setPartyToDelete(party); setShowDeleteDialog(true); }}
+                                onClick={() => requestDeleteParty(party)}
                                 title="Delete"
                                 className="text-red-600 hover:text-red-700"
                                 data-testid={`button-delete-${party.id}`}
@@ -743,12 +808,13 @@ export default function AdminDashboard() {
                       <TableHead>Status</TableHead>
                       <TableHead>Arrived By</TableHead>
                       <TableHead>Left By</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredDispatches.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-center text-gray-500 py-8">
+                        <TableCell colSpan={11} className="text-center text-gray-500 py-8">
                           No dispatches found
                         </TableCell>
                       </TableRow>
@@ -781,6 +847,16 @@ export default function AdminDashboard() {
                             </TableCell>
                             <TableCell>{dispatch.arrivedByName || "-"}</TableCell>
                             <TableCell>{dispatch.leftByName || "-"}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => requestDeleteDispatch(dispatch)}
+                                data-testid={`button-delete-dispatch-${dispatch.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         );
                       })
@@ -910,6 +986,17 @@ export default function AdminDashboard() {
                 data-testid="input-plant-pin"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="ownerPin">New Owner PIN (for delete operations)</Label>
+              <Input
+                id="ownerPin"
+                type="password"
+                value={ownerPin}
+                onChange={(e) => setOwnerPin(e.target.value)}
+                placeholder="Leave empty to keep current"
+                data-testid="input-owner-pin"
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowSettingsDialog(false)}>
@@ -922,25 +1009,35 @@ export default function AdminDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent data-testid="dialog-delete">
+      <Dialog open={showOwnerPinDialog} onOpenChange={(open) => { if (!open) { setShowOwnerPinDialog(false); setOwnerPinInput(""); setPendingDeleteAction(null); } }}>
+        <DialogContent data-testid="dialog-owner-pin">
           <DialogHeader>
-            <DialogTitle>Delete Party</DialogTitle>
+            <DialogTitle>Owner Verification Required</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{partyToDelete?.partyName}"? This action cannot be undone.
+              Enter Owner PIN to {pendingDeleteAction?.type === "party" ? `delete party "${partyToDelete?.partyName}"` : `delete dispatch "${dispatchToDelete?.challanNo}"`}.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="ownerPinInput">Owner PIN</Label>
+              <Input
+                id="ownerPinInput"
+                type="password"
+                value={ownerPinInput}
+                onChange={(e) => setOwnerPinInput(e.target.value)}
+                placeholder="Enter Owner PIN"
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && verifyOwnerPin()}
+                data-testid="input-owner-pin-verify"
+              />
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowDeleteDialog(false); setPartyToDelete(null); }}>
+            <Button variant="outline" onClick={() => { setShowOwnerPinDialog(false); setOwnerPinInput(""); setPendingDeleteAction(null); }}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => partyToDelete && deletePartyMutation.mutate(partyToDelete.id)}
-              disabled={deletePartyMutation.isPending}
-              data-testid="button-confirm-delete"
-            >
-              {deletePartyMutation.isPending ? "Deleting..." : "Delete"}
+            <Button variant="destructive" onClick={verifyOwnerPin} disabled={!ownerPinInput} data-testid="button-verify-owner-pin">
+              Confirm Delete
             </Button>
           </DialogFooter>
         </DialogContent>
