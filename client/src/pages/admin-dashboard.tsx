@@ -130,6 +130,7 @@ export default function AdminDashboard() {
   const [ownerPinInput, setOwnerPinInput] = useState("");
   const [showOwnerPinDialog, setShowOwnerPinDialog] = useState(false);
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ type: "party" | "dispatch"; id: string } | null>(null);
+  const [pendingStatusAction, setPendingStatusAction] = useState<{ partyId: string; newStatus: PartyStatus } | null>(null);
 
   useEffect(() => {
     initializeAudioContext();
@@ -436,17 +437,15 @@ export default function AdminDashboard() {
   }
 
   function handleToggleStatus(party: Party) {
-    const newStatus = party.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-    updatePartyMutation.mutate({ id: party.id, data: { status: newStatus } });
+    // For CLOSED parties, toggle to ACTIVE; otherwise toggle between ACTIVE/INACTIVE
+    const newStatus = party.status === "CLOSED" ? "ACTIVE" : (party.status === "ACTIVE" ? "INACTIVE" : "ACTIVE");
+    setPendingStatusAction({ partyId: party.id, newStatus });
+    setShowOwnerPinDialog(true);
   }
 
   function handleReconcile(party: Party) {
-    updatePartyMutation.mutate({
-      id: party.id,
-      data: {
-        status: "CLOSED",
-      },
-    });
+    setPendingStatusAction({ partyId: party.id, newStatus: "CLOSED" });
+    setShowOwnerPinDialog(true);
   }
 
   function getPartyTotals(partyId: string) {
@@ -532,16 +531,38 @@ export default function AdminDashboard() {
 
   async function verifyOwnerPin() {
     try {
+      // First verify the PIN
+      const verifyResponse = await fetch("/api/auth/verify-owner-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerPin: ownerPinInput }),
+        credentials: "include",
+      });
+      
+      if (!verifyResponse.ok) {
+        const error = await verifyResponse.json();
+        toast({ title: "Error", description: error.error || "Invalid Owner PIN", variant: "destructive" });
+        return;
+      }
+      
+      // Handle delete actions
       if (pendingDeleteAction?.type === "party") {
         deletePartyMutation.mutate({ id: pendingDeleteAction.id, ownerPin: ownerPinInput });
       } else if (pendingDeleteAction?.type === "dispatch") {
         deleteDispatchMutation.mutate({ id: pendingDeleteAction.id, ownerPin: ownerPinInput });
       }
+      
+      // Handle status change actions
+      if (pendingStatusAction) {
+        updatePartyMutation.mutate({ id: pendingStatusAction.partyId, data: { status: pendingStatusAction.newStatus } });
+      }
+      
       setShowOwnerPinDialog(false);
       setOwnerPinInput("");
       setPendingDeleteAction(null);
+      setPendingStatusAction(null);
     } catch (error) {
-      toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to verify PIN", variant: "destructive" });
     }
   }
 
@@ -813,7 +834,6 @@ export default function AdminDashboard() {
                               <Switch
                                 checked={party.status === "ACTIVE"}
                                 onCheckedChange={() => handleToggleStatus(party)}
-                                disabled={party.status === "CLOSED"}
                                 data-testid={`switch-active-${party.id}`}
                               />
                               {party.status !== "CLOSED" && (
@@ -1227,12 +1247,18 @@ export default function AdminDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showOwnerPinDialog} onOpenChange={(open) => { if (!open) { setShowOwnerPinDialog(false); setOwnerPinInput(""); setPendingDeleteAction(null); } }}>
+      <Dialog open={showOwnerPinDialog} onOpenChange={(open) => { if (!open) { setShowOwnerPinDialog(false); setOwnerPinInput(""); setPendingDeleteAction(null); setPendingStatusAction(null); } }}>
         <DialogContent data-testid="dialog-owner-pin">
           <DialogHeader>
             <DialogTitle>Owner Verification Required</DialogTitle>
             <DialogDescription>
-              Enter Owner PIN to {pendingDeleteAction?.type === "party" ? `delete party "${partyToDelete?.partyName}"` : `delete dispatch "${dispatchToDelete?.challanNo}"`}.
+              {pendingDeleteAction?.type === "party" 
+                ? `Enter Owner PIN to delete party "${partyToDelete?.partyName}".`
+                : pendingDeleteAction?.type === "dispatch"
+                ? `Enter Owner PIN to delete dispatch "${dispatchToDelete?.challanNo}".`
+                : pendingStatusAction
+                ? `Enter Owner PIN to change party status to "${pendingStatusAction.newStatus}".`
+                : "Enter Owner PIN to proceed."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1251,11 +1277,11 @@ export default function AdminDashboard() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowOwnerPinDialog(false); setOwnerPinInput(""); setPendingDeleteAction(null); }}>
+            <Button variant="outline" onClick={() => { setShowOwnerPinDialog(false); setOwnerPinInput(""); setPendingDeleteAction(null); setPendingStatusAction(null); }}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={verifyOwnerPin} disabled={!ownerPinInput} data-testid="button-verify-owner-pin">
-              Confirm Delete
+            <Button variant={pendingDeleteAction ? "destructive" : "default"} onClick={verifyOwnerPin} disabled={!ownerPinInput} data-testid="button-verify-owner-pin">
+              {pendingDeleteAction ? "Confirm Delete" : "Confirm"}
             </Button>
           </DialogFooter>
         </DialogContent>
