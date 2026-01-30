@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { storage } from "./storage";
 
 const app = express();
+app.set("trust proxy", 1);
 const httpServer = createServer(app);
 
 declare module "http" {
@@ -65,7 +66,7 @@ app.use((req, res, next) => {
   const defaultPins = [
     { key: "admin_pin", value: "1234" },
     { key: "plant_pin", value: "5678" },
-    { key: "owner_pin", value: "0000" },
+    { key: "owner_pin", value: "2299" },
   ];
 
   for (const { key, value } of defaultPins) {

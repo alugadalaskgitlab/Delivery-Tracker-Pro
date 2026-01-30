@@ -48,9 +48,11 @@ export async function registerRoutes(
       secret: process.env.SESSION_SECRET || "dev-secret-change-in-production",
       resave: false,
       saveUninitialized: false,
+      proxy: true,
       cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
         maxAge: 1000 * 60 * 60 * 24 * 7,
       },
     })
