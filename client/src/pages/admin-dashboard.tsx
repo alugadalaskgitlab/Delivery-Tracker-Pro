@@ -535,7 +535,7 @@ export default function AdminDashboard() {
       const verifyResponse = await fetch("/api/auth/verify-owner-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerPin: ownerPinInput }),
+        body: JSON.stringify({ pin: ownerPinInput }),
         credentials: "include",
       });
       
