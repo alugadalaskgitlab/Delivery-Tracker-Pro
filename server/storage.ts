@@ -267,6 +267,9 @@ export class DbStorage implements IStorage {
   }
 
   async deleteParty(id: string): Promise<boolean> {
+    // First delete all sites belonging to this party
+    await db.delete(sites).where(eq(sites.partyId, id));
+    // Then delete the party
     const result = await db.delete(parties).where(eq(parties.id, id)).returning();
     return result.length > 0;
   }
