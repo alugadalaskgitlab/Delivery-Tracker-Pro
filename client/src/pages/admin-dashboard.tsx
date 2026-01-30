@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { playNewDispatchSound, playStatusUpdateSound, initializeAudioContext } from "@/lib/sounds";
 import { format } from "date-fns";
+import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -305,6 +306,36 @@ export default function AdminDashboard() {
     enabled: !!managingSitesParty,
   });
 
+  const { data: allSites = [] } = useQuery<Site[]>({
+    queryKey: ["/api/sites/all"],
+    queryFn: async () => {
+      const res = await fetch("/api/sites/all");
+      if (!res.ok) throw new Error("Failed to fetch all sites");
+      return res.json();
+    },
+  });
+
+  const siteSummaryData = useMemo(() => {
+    return allSites.map((site) => {
+      const party = parties.find((p) => p.id === site.partyId);
+      const siteDispatches = dispatches.filter((d) => d.siteId === site.id);
+      const dispatchedMT = siteDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
+      const orderedMT = Number(site.orderedMT);
+      const balanceMT = orderedMT - dispatchedMT;
+      return {
+        id: site.id,
+        partyName: party?.partyName || "Unknown",
+        partyCode: party?.partyCode || "-",
+        siteName: site.siteName,
+        siteCode: site.siteCode,
+        mixType: site.mixType,
+        orderedMT,
+        dispatchedMT,
+        balanceMT,
+      };
+    });
+  }, [allSites, parties, dispatches]);
+
   const createSiteMutation = useMutation({
     mutationFn: async ({ partyId, siteName, mixType, orderedMT }: { partyId: string; siteName: string; mixType: string; orderedMT: string }) => {
       const res = await fetch(`/api/parties/${partyId}/sites`, {
@@ -570,11 +601,18 @@ export default function AdminDashboard() {
 
   const uniqueSites = useMemo(() => {
     const sites = new Set<string>();
-    dispatches.forEach((d) => {
+    const filteredByParty = partyFilter === "all" 
+      ? dispatches 
+      : dispatches.filter((d) => d.partyId === partyFilter);
+    filteredByParty.forEach((d) => {
       if (d.siteName) sites.add(d.siteName);
     });
     return Array.from(sites).sort();
-  }, [dispatches]);
+  }, [dispatches, partyFilter]);
+
+  useEffect(() => {
+    setSiteFilterReports("all");
+  }, [partyFilter]);
 
   const summaryStats = useMemo(() => {
     const totalParties = parties.length;
@@ -584,9 +622,7 @@ export default function AdminDashboard() {
     return { totalParties, activeParties, totalDispatched, pendingAcknowledgement };
   }, [parties, dispatches]);
 
-  async function exportToExcel() {
-    const XLSX = await import("xlsx");
-    
+  function exportToExcel() {
     const headers = ["Challan No", "Party", "Site", "Mix Type", "Vehicle", "Load (MT)", "Date", "Status", "Arrived By", "Left By"];
     const rows = filteredDispatches.map((d) => {
       return [
@@ -809,6 +845,56 @@ export default function AdminDashboard() {
                   )}
                 </TableBody>
               </Table>
+            </Card>
+
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5" />
+                  Site Summary
+                </CardTitle>
+                <CardDescription>Overview of all sites with ordered vs dispatched quantities</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Party Name</TableHead>
+                      <TableHead>Site Name</TableHead>
+                      <TableHead>Site Code</TableHead>
+                      <TableHead>Mix Type</TableHead>
+                      <TableHead className="text-right">Ordered MT</TableHead>
+                      <TableHead className="text-right">Dispatched MT</TableHead>
+                      <TableHead className="text-right">Balance MT</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {siteSummaryData.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+                          No sites found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      siteSummaryData.map((site) => (
+                        <TableRow key={site.id} data-testid={`row-site-summary-${site.id}`}>
+                          <TableCell className="font-medium">{site.partyName}</TableCell>
+                          <TableCell>{site.siteName}</TableCell>
+                          <TableCell>{site.siteCode}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{site.mixType}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">{site.orderedMT.toFixed(2)}</TableCell>
+                          <TableCell className="text-right">{site.dispatchedMT.toFixed(2)}</TableCell>
+                          <TableCell className={`text-right font-medium ${site.balanceMT < 0 ? 'text-red-600' : site.balanceMT === 0 ? 'text-gray-500' : 'text-green-600'}`}>
+                            {site.balanceMT.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
             </Card>
           </TabsContent>
 

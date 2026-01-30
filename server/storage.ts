@@ -39,6 +39,7 @@ export interface IStorage {
   updateParty(id: string, data: Partial<Party>): Promise<Party | undefined>;
   
   getSitesByParty(partyId: string): Promise<Site[]>;
+  getAllSites(): Promise<Site[]>;
   getSite(id: string): Promise<Site | undefined>;
   getSiteByAccessId(accessId: string): Promise<Site | undefined>;
   createSite(site: InsertSite): Promise<Site>;
@@ -118,6 +119,10 @@ export class DbStorage implements IStorage {
 
   async getSitesByParty(partyId: string): Promise<Site[]> {
     return await db.select().from(sites).where(eq(sites.partyId, partyId)).orderBy(desc(sites.createdAt));
+  }
+
+  async getAllSites(): Promise<Site[]> {
+    return await db.select().from(sites).orderBy(desc(sites.createdAt));
   }
 
   async getSite(id: string): Promise<Site | undefined> {

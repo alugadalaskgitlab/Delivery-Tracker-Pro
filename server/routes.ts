@@ -426,6 +426,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/sites/all", requirePlantOrAdmin, async (req: Request, res: Response) => {
+    try {
+      const sites = await storage.getAllSites();
+      return res.json(sites);
+    } catch (error) {
+      console.error("Get all sites error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.delete("/api/sites/:id", requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
