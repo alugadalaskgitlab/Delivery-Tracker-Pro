@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Loader2, Home } from "lucide-react";
+import { playStatusUpdateSound, playNewDispatchSound, initializeAudioContext } from "@/lib/sounds";
 
 type Party = {
   id: string;
@@ -21,6 +22,7 @@ type Party = {
   orderRefNo?: string | null;
   mixType?: string;
   totalRequiredMT: string;
+  siteName?: string | null;
   status: "ACTIVE" | "INACTIVE" | "CLOSED";
 };
 
@@ -55,6 +57,7 @@ export default function PlantDispatch() {
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
+    initializeAudioContext();
     const socket = io();
     
     socket.on("dispatch-status-updated", (data: {
@@ -65,10 +68,25 @@ export default function PlantDispatch() {
       receiverName: string;
     }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
+      playStatusUpdateSound();
       
       toast({
         title: `Dispatch ${data.dispatch.challanNo} - ${data.newStatus}`,
         description: `${data.partyName} (${data.partyCode}) - Acknowledged by ${data.receiverName}`,
+      });
+    });
+
+    socket.on("new-dispatch", (data: {
+      dispatch: { challanNo: string };
+      partyName: string;
+      partyCode: string;
+    }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
+      playNewDispatchSound();
+      
+      toast({
+        title: `New Dispatch Created`,
+        description: `${data.dispatch.challanNo} - ${data.partyName} (${data.partyCode})`,
       });
     });
 
@@ -223,7 +241,15 @@ export default function PlantDispatch() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="party">Party/Order *</Label>
-                  <Select value={partyId} onValueChange={setPartyId}>
+                  <Select value={partyId} onValueChange={(value) => {
+                  setPartyId(value);
+                  const party = activeParties.find(p => p.id === value);
+                  if (party?.siteName) {
+                    setSiteName(party.siteName.toUpperCase());
+                  } else {
+                    setSiteName("");
+                  }
+                }}>
                     <SelectTrigger data-testid="select-party">
                       <SelectValue placeholder="Select party/order" />
                     </SelectTrigger>
@@ -269,10 +295,14 @@ export default function PlantDispatch() {
                     id="siteName"
                     data-testid="input-site-name"
                     value={siteName}
-                    onChange={(e) => setSiteName(e.target.value.toUpperCase())}
-                    placeholder="Enter site name"
+                    readOnly
+                    placeholder="Auto-filled from party"
+                    className="bg-gray-100"
                     style={{ textTransform: "uppercase" }}
                   />
+                  {!siteName && partyId && (
+                    <p className="text-xs text-orange-600">No site name configured for this party</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">

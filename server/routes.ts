@@ -423,6 +423,12 @@ export async function registerRoutes(
         createdBy: null,
       });
 
+      io.emit("new-dispatch", {
+        dispatch,
+        partyName: party.partyName,
+        partyCode: party.partyCode,
+      });
+
       return res.json(dispatch);
     } catch (error) {
       if (error instanceof z.ZodError) {

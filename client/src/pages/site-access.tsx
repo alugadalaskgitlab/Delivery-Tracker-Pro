@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Loader2, PackageCheck, Truck, XCircle } from "lucide-react";
+import { io } from "socket.io-client";
+import { playNewDispatchSound, initializeAudioContext } from "@/lib/sounds";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +59,26 @@ export default function SiteAccess() {
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(null);
   const [action, setAction] = useState<"arrived" | "left" | null>(null);
   const [receiverName, setReceiverName] = useState("");
+
+  useEffect(() => {
+    initializeAudioContext();
+    const socket = io();
+    
+    socket.on("new-dispatch", () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/site/dispatches", token] });
+      queryClient.invalidateQueries({ queryKey: ["/api/site/validate", token] });
+      playNewDispatchSound();
+      
+      toast({
+        title: "New Dispatch",
+        description: "A new dispatch has been created for your site",
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [queryClient, toast, token]);
 
   const { data: validation, isLoading: validating, error: validationError } = useQuery<TokenValidation>({
     queryKey: ["/api/site/validate", token],

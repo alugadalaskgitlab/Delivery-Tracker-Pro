@@ -19,6 +19,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { playNewDispatchSound, playStatusUpdateSound, initializeAudioContext } from "@/lib/sounds";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -141,6 +142,7 @@ export default function AdminDashboard() {
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ type: "party" | "dispatch"; id: string } | null>(null);
 
   useEffect(() => {
+    initializeAudioContext();
     const socket = io();
     
     socket.on("dispatch-status-updated", (data: {
@@ -155,10 +157,25 @@ export default function AdminDashboard() {
       receiverName: string;
     }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
+      playStatusUpdateSound();
       
       toast({
         title: `Dispatch ${data.dispatch.challanNo} - ${data.newStatus}`,
         description: `${data.partyName} (${data.partyCode}) - Acknowledged by ${data.receiverName}`,
+      });
+    });
+
+    socket.on("new-dispatch", (data: {
+      dispatch: { challanNo: string };
+      partyName: string;
+      partyCode: string;
+    }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
+      playNewDispatchSound();
+      
+      toast({
+        title: `New Dispatch Created`,
+        description: `${data.dispatch.challanNo} - ${data.partyName} (${data.partyCode})`,
       });
     });
 
