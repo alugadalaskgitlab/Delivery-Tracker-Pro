@@ -11,6 +11,7 @@ import {
   Filter,
   Home,
   Link2,
+  MapPin,
   Plus,
   Printer,
   Search,
@@ -55,6 +56,14 @@ type Party = {
   accessId: string;
   reconciledMT: string;
   invoicedMT: string;
+  createdAt: string;
+};
+
+type Site = {
+  id: string;
+  partyId: string;
+  siteName: string;
+  accessId: string;
   createdAt: string;
 };
 
@@ -186,6 +195,8 @@ export default function AdminDashboard() {
 
   const [partyToDelete, setPartyToDelete] = useState<Party | null>(null);
   const [dispatchToDelete, setDispatchToDelete] = useState<Dispatch | null>(null);
+  const [managingSitesParty, setManagingSitesParty] = useState<Party | null>(null);
+  const [newSiteName, setNewSiteName] = useState("");
 
   const { data: parties = [], isLoading: loadingParties } = useQuery<Party[]>({
     queryKey: ["/api/parties"],
@@ -299,6 +310,62 @@ export default function AdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
       toast({ title: "Success", description: "Dispatch deleted successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const { data: partySites = [] } = useQuery<Site[]>({
+    queryKey: ["/api/parties", managingSitesParty?.id, "sites"],
+    queryFn: async () => {
+      if (!managingSitesParty) return [];
+      const res = await fetch(`/api/parties/${managingSitesParty.id}/sites`);
+      if (!res.ok) throw new Error("Failed to fetch sites");
+      return res.json();
+    },
+    enabled: !!managingSitesParty,
+  });
+
+  const createSiteMutation = useMutation({
+    mutationFn: async ({ partyId, siteName }: { partyId: string; siteName: string }) => {
+      const res = await fetch(`/api/parties/${partyId}/sites`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteName }),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to create site");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parties", managingSitesParty?.id, "sites"] });
+      setNewSiteName("");
+      toast({ title: "Success", description: "Site added successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteSiteMutation = useMutation({
+    mutationFn: async ({ id, ownerPin }: { id: string; ownerPin: string }) => {
+      const res = await fetch(`/api/sites/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerPin }),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to delete site");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parties", managingSitesParty?.id, "sites"] });
+      toast({ title: "Success", description: "Site deleted successfully" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -728,8 +795,17 @@ export default function AdminDashboard() {
                               <Button
                                 size="sm"
                                 variant="ghost"
+                                onClick={() => setManagingSitesParty(party)}
+                                title="Manage Sites"
+                                data-testid={`button-manage-sites-${party.id}`}
+                              >
+                                <MapPin className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
                                 onClick={() => copyLink(party.accessId)}
-                                title="Copy site link"
+                                title="Copy party link"
                                 data-testid={`button-copy-link-${party.id}`}
                               >
                                 <Link2 className="h-4 w-4" />
@@ -1181,6 +1257,95 @@ export default function AdminDashboard() {
             </Button>
             <Button variant="destructive" onClick={verifyOwnerPin} disabled={!ownerPinInput} data-testid="button-verify-owner-pin">
               Confirm Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!managingSitesParty} onOpenChange={(open) => { if (!open) { setManagingSitesParty(null); setNewSiteName(""); } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Manage Sites - {managingSitesParty?.partyName}</DialogTitle>
+            <DialogDescription>
+              Add delivery sites for this party. Each site gets a unique shareable link.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter site name"
+                value={newSiteName}
+                onChange={(e) => setNewSiteName(e.target.value.toUpperCase())}
+                style={{ textTransform: "uppercase" }}
+                data-testid="input-new-site-name"
+              />
+              <Button
+                onClick={() => {
+                  if (managingSitesParty && newSiteName.trim()) {
+                    createSiteMutation.mutate({ partyId: managingSitesParty.id, siteName: newSiteName.trim() });
+                  }
+                }}
+                disabled={!newSiteName.trim() || createSiteMutation.isPending}
+                data-testid="button-add-site"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </div>
+
+            <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+              {partySites.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">
+                  No sites added yet. Add your first site above.
+                </div>
+              ) : (
+                partySites.map((site) => (
+                  <div key={site.id} className="p-3 flex items-center justify-between" data-testid={`site-row-${site.id}`}>
+                    <div>
+                      <div className="font-medium">{site.siteName}</div>
+                      <div className="text-xs text-gray-500">
+                        {window.location.origin}/site/{site.accessId}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          const url = `${window.location.origin}/site/${site.accessId}`;
+                          navigator.clipboard.writeText(url).then(() => {
+                            toast({ title: "Link copied", description: url });
+                          });
+                        }}
+                        title="Copy site link"
+                        data-testid={`button-copy-site-link-${site.id}`}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => {
+                          const pin = prompt("Enter Owner PIN to delete this site:");
+                          if (pin) {
+                            deleteSiteMutation.mutate({ id: site.id, ownerPin: pin });
+                          }
+                        }}
+                        title="Delete site"
+                        data-testid={`button-delete-site-${site.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setManagingSitesParty(null); setNewSiteName(""); }}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

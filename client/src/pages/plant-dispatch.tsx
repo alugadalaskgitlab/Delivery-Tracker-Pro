@@ -26,6 +26,13 @@ type Party = {
   status: "ACTIVE" | "INACTIVE" | "CLOSED";
 };
 
+type Site = {
+  id: string;
+  partyId: string;
+  siteName: string;
+  accessId: string;
+};
+
 type Dispatch = {
   id: string;
   challanNo: string;
@@ -51,7 +58,7 @@ export default function PlantDispatch() {
   const queryClient = useQueryClient();
 
   const [partyId, setPartyId] = useState("");
-  const [siteName, setSiteName] = useState("");
+  const [siteId, setSiteId] = useState("");
   const [vehicleNo, setVehicleNo] = useState("");
   const [loadMT, setLoadMT] = useState("");
   const [notes, setNotes] = useState("");
@@ -113,6 +120,17 @@ export default function PlantDispatch() {
     },
   });
 
+  const { data: sites = [] } = useQuery<Site[]>({
+    queryKey: ["/api/parties", partyId, "sites"],
+    queryFn: async () => {
+      if (!partyId) return [];
+      const res = await fetch(`/api/parties/${partyId}/sites`);
+      if (!res.ok) throw new Error("Failed to fetch sites");
+      return res.json();
+    },
+    enabled: !!partyId,
+  });
+
   const { data: dispatches = [], refetch } = useQuery<Dispatch[]>({
     queryKey: ["/api/dispatches"],
     queryFn: async () => {
@@ -138,7 +156,7 @@ export default function PlantDispatch() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
       setPartyId("");
-      setSiteName("");
+      setSiteId("");
       setVehicleNo("");
       setLoadMT("");
       setNotes("");
@@ -159,10 +177,20 @@ export default function PlantDispatch() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!partyId || !siteName || !vehicleNo || !loadMT) {
+    if (!partyId || !siteId || !vehicleNo || !loadMT) {
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedSite = sites.find((s) => s.id === siteId);
+    if (!selectedSite) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a valid site",
         variant: "destructive",
       });
       return;
@@ -193,7 +221,8 @@ export default function PlantDispatch() {
       partyName: party.partyName,
       partyCode: party.partyCode,
       orderRefNo: party.orderRefNo || undefined,
-      siteName: siteName.trim().toUpperCase(),
+      siteId: selectedSite.id,
+      siteName: selectedSite.siteName,
       vehicleNo: vehicleNo.trim().toUpperCase(),
       loadMT: String(loadNum),
       status: "DISPATCHED",
@@ -243,12 +272,7 @@ export default function PlantDispatch() {
                   <Label htmlFor="party">Party/Order *</Label>
                   <Select value={partyId} onValueChange={(value) => {
                   setPartyId(value);
-                  const party = activeParties.find(p => p.id === value);
-                  if (party?.siteName) {
-                    setSiteName(party.siteName.toUpperCase());
-                  } else {
-                    setSiteName("");
-                  }
+                  setSiteId("");
                 }}>
                     <SelectTrigger data-testid="select-party">
                       <SelectValue placeholder="Select party/order" />
@@ -290,18 +314,21 @@ export default function PlantDispatch() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="siteName">Site Name *</Label>
-                  <Input
-                    id="siteName"
-                    data-testid="input-site-name"
-                    value={siteName}
-                    readOnly
-                    placeholder="Auto-filled from party"
-                    className="bg-gray-100"
-                    style={{ textTransform: "uppercase" }}
-                  />
-                  {!siteName && partyId && (
-                    <p className="text-xs text-orange-600">No site name configured for this party</p>
+                  <Label htmlFor="site">Site *</Label>
+                  <Select value={siteId} onValueChange={setSiteId} disabled={!partyId}>
+                    <SelectTrigger data-testid="select-site">
+                      <SelectValue placeholder={partyId ? "Select site" : "Select party first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sites.map((site) => (
+                        <SelectItem key={site.id} value={site.id} data-testid={`option-site-${site.id}`}>
+                          {site.siteName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {partyId && sites.length === 0 && (
+                    <p className="text-xs text-orange-600">No sites added for this party. Admin must add sites first.</p>
                   )}
                 </div>
 

@@ -44,6 +44,8 @@ type TokenValidation = {
   valid: boolean;
   partyName?: string;
   partyCode?: string;
+  siteId?: string;
+  siteName?: string;
   totalRequiredMT?: string;
   receivedMT?: string;
   balanceMT?: string;
@@ -212,7 +214,10 @@ export default function SiteAccess() {
         <div className="container mx-auto px-4 py-4">
           <div>
             <h1 className="text-2xl font-bold">Dispatch Tracking</h1>
-            <p className="text-sm text-gray-600">{validation.partyName} ({validation.partyCode})</p>
+            <p className="text-sm text-gray-600">
+              {validation.partyName} ({validation.partyCode})
+              {validation.siteName && <span className="ml-2 font-medium">- {validation.siteName}</span>}
+            </p>
           </div>
         </div>
       </header>
@@ -222,7 +227,9 @@ export default function SiteAccess() {
           <CardContent className="pt-6">
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <p className="text-sm text-gray-600 font-medium">Total Order</p>
+                <p className="text-sm text-gray-600 font-medium">
+                  {validation.siteName ? "Total Dispatched" : "Total Order"}
+                </p>
                 <p className="text-2xl font-bold text-blue-700" data-testid="qty-ordered">
                   {Number(validation.totalRequiredMT || 0).toFixed(2)} MT
                 </p>

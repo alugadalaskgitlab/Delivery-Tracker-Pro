@@ -630,6 +630,30 @@ export async function registerRoutes(
     try {
       const { token: siteToken } = req.params;
 
+      const site = await storage.getSiteByAccessId(siteToken);
+      if (site) {
+        const party = await storage.getParty(site.partyId);
+        if (!party || party.status !== "ACTIVE") {
+          return res.status(401).json({ valid: false, error: "Access closed - party/order is not active" });
+        }
+        const dispatches = await storage.getDispatchesBySite(site.id);
+        const receivedMT = dispatches
+          .filter(d => d.status === "LEFT")
+          .reduce((sum, d) => sum + Number(d.loadMT), 0);
+        const totalDispatched = dispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
+        return res.json({
+          valid: true,
+          partyName: party.partyName,
+          partyCode: party.partyCode,
+          partyId: party.id,
+          siteId: site.id,
+          siteName: site.siteName,
+          totalRequiredMT: totalDispatched.toFixed(2),
+          receivedMT: receivedMT.toFixed(2),
+          balanceMT: (totalDispatched - receivedMT).toFixed(2),
+        });
+      }
+
       const token = await storage.getSiteTokenByToken(siteToken);
       if (token && token.active) {
         const party = await storage.getParty(token.partyId);
@@ -675,7 +699,16 @@ export async function registerRoutes(
     }
   });
 
-  async function resolvePartyFromToken(siteToken: string): Promise<{ party: any; error?: string } | null> {
+  async function resolveAccessFromToken(siteToken: string): Promise<{ party: any; site?: any; error?: string } | null> {
+    const site = await storage.getSiteByAccessId(siteToken);
+    if (site) {
+      const party = await storage.getParty(site.partyId);
+      if (!party || party.status !== "ACTIVE") {
+        return { party: null, error: "Access closed - party/order is not active" };
+      }
+      return { party, site };
+    }
+
     const token = await storage.getSiteTokenByToken(siteToken);
     if (token && token.active) {
       const party = await storage.getParty(token.partyId);
@@ -697,7 +730,7 @@ export async function registerRoutes(
     try {
       const { token: siteToken } = req.params;
 
-      const result = await resolvePartyFromToken(siteToken);
+      const result = await resolveAccessFromToken(siteToken);
       if (!result) {
         return res.status(401).json({ error: "Invalid or inactive token" });
       }
@@ -705,7 +738,9 @@ export async function registerRoutes(
         return res.status(401).json({ error: result.error });
       }
 
-      const dispatches = await storage.getDispatchesByParty(result.party.id);
+      const dispatches = result.site 
+        ? await storage.getDispatchesBySite(result.site.id)
+        : await storage.getDispatchesByParty(result.party.id);
       return res.json(dispatches);
     } catch (error) {
       console.error("Get site dispatches error:", error);
@@ -726,7 +761,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Token is required" });
       }
 
-      const result = await resolvePartyFromToken(siteToken);
+      const result = await resolveAccessFromToken(siteToken);
       if (!result) {
         return res.status(401).json({ error: "Invalid or inactive token" });
       }
@@ -741,6 +776,10 @@ export async function registerRoutes(
 
       if (dispatch.partyId !== result.party.id) {
         return res.status(403).json({ error: "Forbidden" });
+      }
+
+      if (result.site && dispatch.siteId !== result.site.id) {
+        return res.status(403).json({ error: "Forbidden - dispatch not for this site" });
       }
 
       if (dispatch.status !== "DISPATCHED") {
@@ -781,7 +820,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Token is required" });
       }
 
-      const result = await resolvePartyFromToken(siteToken);
+      const result = await resolveAccessFromToken(siteToken);
       if (!result) {
         return res.status(401).json({ error: "Invalid or inactive token" });
       }
@@ -796,6 +835,10 @@ export async function registerRoutes(
 
       if (dispatch.partyId !== result.party.id) {
         return res.status(403).json({ error: "Forbidden" });
+      }
+
+      if (result.site && dispatch.siteId !== result.site.id) {
+        return res.status(403).json({ error: "Forbidden - dispatch not for this site" });
       }
 
       if (dispatch.status !== "ARRIVED") {
