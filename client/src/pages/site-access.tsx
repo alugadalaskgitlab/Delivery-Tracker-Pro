@@ -42,6 +42,9 @@ type TokenValidation = {
   valid: boolean;
   partyName?: string;
   partyCode?: string;
+  totalRequiredMT?: string;
+  receivedMT?: string;
+  balanceMT?: string;
   error?: string;
 };
 
@@ -193,6 +196,31 @@ export default function SiteAccess() {
       </header>
 
       <main className="container mx-auto px-4 py-8 space-y-6">
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-sm text-gray-600 font-medium">Total Order</p>
+                <p className="text-2xl font-bold text-blue-700" data-testid="qty-ordered">
+                  {Number(validation.totalRequiredMT || 0).toFixed(2)} MT
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 font-medium">Received</p>
+                <p className="text-2xl font-bold text-green-700" data-testid="qty-received">
+                  {Number(validation.receivedMT || 0).toFixed(2)} MT
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 font-medium">Balance</p>
+                <p className="text-2xl font-bold text-orange-700" data-testid="qty-balance">
+                  {Number(validation.balanceMT || 0).toFixed(2)} MT
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="pt-6">
@@ -366,9 +394,10 @@ export default function SiteAccess() {
                   id="receiverName"
                   data-testid="input-receiver-name"
                   value={receiverName}
-                  onChange={(e) => setReceiverName(e.target.value)}
+                  onChange={(e) => setReceiverName(e.target.value.toUpperCase())}
                   placeholder="Enter receiver name"
                   autoFocus
+                  style={{ textTransform: "uppercase" }}
                 />
               </div>
             </div>

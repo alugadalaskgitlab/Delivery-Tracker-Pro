@@ -23,6 +23,7 @@ export type User = typeof users.$inferSelect;
 export const parties = pgTable("parties", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   partyName: text("party_name").notNull(),
+  siteName: text("site_name"),
   partyCode: text("party_code").notNull().unique(),
   orderRefNo: text("order_ref_no"),
   mixType: text("mix_type").notNull().default("DBM"),

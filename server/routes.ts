@@ -569,21 +569,35 @@ export async function registerRoutes(
         if (!party || party.status !== "ACTIVE") {
           return res.status(401).json({ valid: false, error: "Access closed - party/order is not active" });
         }
+        const dispatches = await storage.getDispatchesByParty(party.id);
+        const receivedMT = dispatches
+          .filter(d => d.status === "LEFT")
+          .reduce((sum, d) => sum + Number(d.loadMT), 0);
         return res.json({
           valid: true,
           partyName: party.partyName,
           partyCode: party.partyCode,
           partyId: party.id,
+          totalRequiredMT: party.totalRequiredMT,
+          receivedMT: receivedMT.toFixed(2),
+          balanceMT: (Number(party.totalRequiredMT) - receivedMT).toFixed(2),
         });
       }
 
       const partyByAccess = await storage.getPartyByAccessId(siteToken);
       if (partyByAccess && partyByAccess.status === "ACTIVE") {
+        const dispatches = await storage.getDispatchesByParty(partyByAccess.id);
+        const receivedMT = dispatches
+          .filter(d => d.status === "LEFT")
+          .reduce((sum, d) => sum + Number(d.loadMT), 0);
         return res.json({
           valid: true,
           partyName: partyByAccess.partyName,
           partyCode: partyByAccess.partyCode,
           partyId: partyByAccess.id,
+          totalRequiredMT: partyByAccess.totalRequiredMT,
+          receivedMT: receivedMT.toFixed(2),
+          balanceMT: (Number(partyByAccess.totalRequiredMT) - receivedMT).toFixed(2),
         });
       }
 

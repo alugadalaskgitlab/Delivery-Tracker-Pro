@@ -269,8 +269,9 @@ export default function PlantDispatch() {
                     id="siteName"
                     data-testid="input-site-name"
                     value={siteName}
-                    onChange={(e) => setSiteName(e.target.value)}
+                    onChange={(e) => setSiteName(e.target.value.toUpperCase())}
                     placeholder="Enter site name"
+                    style={{ textTransform: "uppercase" }}
                   />
                 </div>
 
@@ -280,8 +281,9 @@ export default function PlantDispatch() {
                     id="vehicleNo"
                     data-testid="input-vehicle-no"
                     value={vehicleNo}
-                    onChange={(e) => setVehicleNo(e.target.value)}
+                    onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
                     placeholder="e.g., MH12AB1234"
+                    style={{ textTransform: "uppercase" }}
                   />
                 </div>
 
