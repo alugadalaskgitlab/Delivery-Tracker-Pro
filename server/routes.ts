@@ -271,16 +271,22 @@ export async function registerRoutes(
 
   app.post("/api/parties", requireAdmin, async (req: Request, res: Response) => {
     try {
-      const data = insertPartySchema.parse(req.body);
-      const accessId = slugify(data.partyCode || data.partyName);
+      const { partyName, address, gstNo, panNo } = req.body;
       
-      const existingCode = await storage.getPartyByCode(data.partyCode);
-      if (existingCode) {
-        return res.status(400).json({ error: "Party code already exists" });
+      if (!partyName) {
+        return res.status(400).json({ error: "Party name is required" });
       }
 
+      const partyCode = await storage.getNextPartyCode();
+      const accessId = slugify(partyCode);
+
       const party = await storage.createParty({
-        ...data,
+        partyName: partyName.toUpperCase(),
+        partyCode,
+        address: address?.toUpperCase() || null,
+        gstNo: gstNo?.toUpperCase() || null,
+        panNo: panNo?.toUpperCase() || null,
+        status: "ACTIVE",
         accessId,
         createdBy: null,
       });
@@ -340,7 +346,6 @@ export async function registerRoutes(
       }
 
       await storage.deactivateSiteTokensByParty(partyId);
-      await storage.deletePartySequence(partyId);
       const deleted = await storage.deleteParty(partyId);
 
       if (!deleted) {
@@ -391,7 +396,7 @@ export async function registerRoutes(
   app.post("/api/parties/:partyId/sites", requireAdmin, async (req: Request, res: Response) => {
     try {
       const { partyId } = req.params;
-      const { siteName } = req.body;
+      const { siteName, mixType, orderedMT } = req.body;
 
       if (!siteName || typeof siteName !== "string" || siteName.trim().length === 0) {
         return res.status(400).json({ error: "Site name is required" });
@@ -402,10 +407,15 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Party not found" });
       }
 
+      const siteCode = await storage.getNextSiteCode(partyId, party.partyCode);
       const accessId = randomToken();
+      
       const site = await storage.createSite({
         partyId,
+        siteCode,
         siteName: siteName.trim().toUpperCase(),
+        mixType: mixType?.toUpperCase() || "DBM",
+        orderedMT: orderedMT || "0",
         accessId,
       });
 
@@ -461,9 +471,13 @@ export async function registerRoutes(
 
   app.post("/api/dispatches", requirePlantOrAdmin, async (req: Request, res: Response) => {
     try {
-      const data = insertDispatchSchema.omit({ challanNo: true }).parse(req.body);
+      const { partyId, siteId, vehicleNo, loadMT, notes } = req.body;
       
-      const party = await storage.getParty(data.partyId);
+      if (!partyId || !siteId || !vehicleNo || !loadMT) {
+        return res.status(400).json({ error: "Party, site, vehicle number and load are required" });
+      }
+
+      const party = await storage.getParty(partyId);
       if (!party) {
         return res.status(404).json({ error: "Party not found" });
       }
@@ -472,15 +486,27 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Party is not active" });
       }
 
-      const nextSeq = await storage.incrementPartySequence(data.partyId);
-      const challanNo = formatChallan(party.partyCode, nextSeq);
+      const site = await storage.getSite(siteId);
+      if (!site) {
+        return res.status(404).json({ error: "Site not found" });
+      }
+
+      const nextSeq = await storage.incrementChallanSequence(siteId);
+      const challanNo = `${party.partyCode}-${site.siteCode}-${String(nextSeq).padStart(4, '0')}`;
 
       const dispatch = await storage.createDispatch({
-        ...data,
         challanNo,
+        partyId,
         partyName: party.partyName,
         partyCode: party.partyCode,
-        orderRefNo: party.orderRefNo,
+        siteId,
+        siteCode: site.siteCode,
+        siteName: site.siteName,
+        mixType: site.mixType,
+        vehicleNo: vehicleNo.toUpperCase(),
+        loadMT,
+        status: "DISPATCHED",
+        notes: notes?.toUpperCase() || null,
         createdBy: null,
       });
 
@@ -488,6 +514,7 @@ export async function registerRoutes(
         dispatch,
         partyName: party.partyName,
         partyCode: party.partyCode,
+        siteName: site.siteName,
       });
 
       return res.json(dispatch);
@@ -660,6 +687,8 @@ export async function registerRoutes(
         if (!party || party.status !== "ACTIVE") {
           return res.status(401).json({ valid: false, error: "Access closed - party/order is not active" });
         }
+        const sites = await storage.getSitesByParty(party.id);
+        const totalOrderedMT = sites.reduce((sum, s) => sum + Number(s.orderedMT || 0), 0);
         const dispatches = await storage.getDispatchesByParty(party.id);
         const receivedMT = dispatches
           .filter(d => d.status === "LEFT")
@@ -669,14 +698,16 @@ export async function registerRoutes(
           partyName: party.partyName,
           partyCode: party.partyCode,
           partyId: party.id,
-          totalRequiredMT: party.totalRequiredMT,
+          totalRequiredMT: totalOrderedMT.toFixed(2),
           receivedMT: receivedMT.toFixed(2),
-          balanceMT: (Number(party.totalRequiredMT) - receivedMT).toFixed(2),
+          balanceMT: (totalOrderedMT - receivedMT).toFixed(2),
         });
       }
 
       const partyByAccess = await storage.getPartyByAccessId(siteToken);
       if (partyByAccess && partyByAccess.status === "ACTIVE") {
+        const sites = await storage.getSitesByParty(partyByAccess.id);
+        const totalOrderedMT = sites.reduce((sum, s) => sum + Number(s.orderedMT || 0), 0);
         const dispatches = await storage.getDispatchesByParty(partyByAccess.id);
         const receivedMT = dispatches
           .filter(d => d.status === "LEFT")
@@ -686,9 +717,9 @@ export async function registerRoutes(
           partyName: partyByAccess.partyName,
           partyCode: partyByAccess.partyCode,
           partyId: partyByAccess.id,
-          totalRequiredMT: partyByAccess.totalRequiredMT,
+          totalRequiredMT: totalOrderedMT.toFixed(2),
           receivedMT: receivedMT.toFixed(2),
-          balanceMT: (Number(partyByAccess.totalRequiredMT) - receivedMT).toFixed(2),
+          balanceMT: (totalOrderedMT - receivedMT).toFixed(2),
         });
       }
 

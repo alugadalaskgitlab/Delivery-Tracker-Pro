@@ -47,22 +47,22 @@ type PartyStatus = "ACTIVE" | "INACTIVE" | "CLOSED";
 type Party = {
   id: string;
   partyName: string;
-  siteName?: string | null;
   partyCode: string;
-  orderRefNo?: string | null;
-  mixType: string;
-  totalRequiredMT: string;
+  address?: string | null;
+  gstNo?: string | null;
+  panNo?: string | null;
   status: PartyStatus;
   accessId: string;
-  reconciledMT: string;
-  invoicedMT: string;
   createdAt: string;
 };
 
 type Site = {
   id: string;
   partyId: string;
+  siteCode: string;
   siteName: string;
+  mixType: string;
+  orderedMT: string;
   accessId: string;
   createdAt: string;
 };
@@ -73,8 +73,10 @@ type Dispatch = {
   partyId: string;
   partyName: string;
   partyCode: string;
-  orderRefNo?: string | null;
+  siteId?: string | null;
+  siteCode?: string | null;
   siteName: string;
+  mixType?: string | null;
   vehicleNo: string;
   loadMT: string;
   createdAt: string;
@@ -96,25 +98,6 @@ function slugify(s: string) {
     .slice(0, 64);
 }
 
-function generatePartyCode(partyName: string, siteName: string): string {
-  const getAbbreviation = (name: string): string => {
-    const words = name.trim().toUpperCase().split(/\s+/).filter(w => w);
-    if (words.length === 0) return "";
-    if (words.length === 1) {
-      return words[0].slice(0, 4);
-    }
-    return words.map(w => w[0]).join("").slice(0, 4);
-  };
-  
-  const partyAbbr = getAbbreviation(partyName);
-  const siteAbbr = getAbbreviation(siteName);
-  
-  if (partyAbbr && siteAbbr) {
-    return `${partyAbbr}-${siteAbbr}`;
-  }
-  return partyAbbr || "";
-}
-
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -123,7 +106,6 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("parties");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [mixTypeFilter, setMixTypeFilter] = useState<string>("all");
   const [partyFilter, setPartyFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -132,11 +114,9 @@ export default function AdminDashboard() {
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [partyForm, setPartyForm] = useState({
     partyName: "",
-    siteName: "",
-    partyCode: "",
-    orderRefNo: "",
-    mixType: "DBM",
-    totalRequiredMT: "",
+    address: "",
+    gstNo: "",
+    panNo: "",
   });
   const [siteFilterReports, setSiteFilterReports] = useState<string>("all");
 
@@ -197,6 +177,8 @@ export default function AdminDashboard() {
   const [dispatchToDelete, setDispatchToDelete] = useState<Dispatch | null>(null);
   const [managingSitesParty, setManagingSitesParty] = useState<Party | null>(null);
   const [newSiteName, setNewSiteName] = useState("");
+  const [newSiteMixType, setNewSiteMixType] = useState("DBM");
+  const [newSiteOrderedMT, setNewSiteOrderedMT] = useState("");
 
   const { data: parties = [], isLoading: loadingParties } = useQuery<Party[]>({
     queryKey: ["/api/parties"],
@@ -223,13 +205,9 @@ export default function AdminDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           partyName: data.partyName.toUpperCase(),
-          siteName: data.siteName?.toUpperCase() || null,
-          partyCode: data.partyCode.toUpperCase(),
-          orderRefNo: data.orderRefNo?.toUpperCase() || null,
-          mixType: data.mixType,
-          totalRequiredMT: data.totalRequiredMT,
-          accessId: slugify(data.partyCode || data.partyName),
-          status: "ACTIVE",
+          address: data.address?.toUpperCase() || null,
+          gstNo: data.gstNo?.toUpperCase() || null,
+          panNo: data.panNo?.toUpperCase() || null,
         }),
       });
       if (!res.ok) {
@@ -328,11 +306,11 @@ export default function AdminDashboard() {
   });
 
   const createSiteMutation = useMutation({
-    mutationFn: async ({ partyId, siteName }: { partyId: string; siteName: string }) => {
+    mutationFn: async ({ partyId, siteName, mixType, orderedMT }: { partyId: string; siteName: string; mixType: string; orderedMT: string }) => {
       const res = await fetch(`/api/parties/${partyId}/sites`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ siteName }),
+        body: JSON.stringify({ siteName, mixType, orderedMT: orderedMT || "0" }),
       });
       if (!res.ok) {
         const error = await res.json();
@@ -343,6 +321,8 @@ export default function AdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/parties", managingSitesParty?.id, "sites"] });
       setNewSiteName("");
+      setNewSiteMixType("DBM");
+      setNewSiteOrderedMT("");
       toast({ title: "Success", description: "Site added successfully" });
     },
     onError: (error: Error) => {
@@ -375,11 +355,9 @@ export default function AdminDashboard() {
   function resetPartyForm() {
     setPartyForm({
       partyName: "",
-      siteName: "",
-      partyCode: "",
-      orderRefNo: "",
-      mixType: "DBM",
-      totalRequiredMT: "",
+      address: "",
+      gstNo: "",
+      panNo: "",
     });
   }
 
@@ -393,18 +371,16 @@ export default function AdminDashboard() {
     setEditingParty(party);
     setPartyForm({
       partyName: party.partyName,
-      siteName: party.siteName || "",
-      partyCode: party.partyCode,
-      orderRefNo: party.orderRefNo || "",
-      mixType: party.mixType || "DBM",
-      totalRequiredMT: party.totalRequiredMT,
+      address: party.address || "",
+      gstNo: party.gstNo || "",
+      panNo: party.panNo || "",
     });
     setShowPartyDialog(true);
   }
 
   function handlePartySubmit() {
-    if (!partyForm.partyName || !partyForm.partyCode || !partyForm.totalRequiredMT) {
-      toast({ title: "Validation Error", description: "Please fill all required fields", variant: "destructive" });
+    if (!partyForm.partyName) {
+      toast({ title: "Validation Error", description: "Party name is required", variant: "destructive" });
       return;
     }
 
@@ -413,14 +389,18 @@ export default function AdminDashboard() {
         id: editingParty.id,
         data: {
           partyName: partyForm.partyName.toUpperCase(),
-          siteName: partyForm.siteName?.toUpperCase() || null,
-          orderRefNo: partyForm.orderRefNo?.toUpperCase() || null,
-          mixType: partyForm.mixType,
-          totalRequiredMT: partyForm.totalRequiredMT,
+          address: partyForm.address?.toUpperCase() || null,
+          gstNo: partyForm.gstNo?.toUpperCase() || null,
+          panNo: partyForm.panNo?.toUpperCase() || null,
         },
       });
     } else {
-      createPartyMutation.mutate(partyForm);
+      createPartyMutation.mutate({
+        partyName: partyForm.partyName.toUpperCase(),
+        address: partyForm.address?.toUpperCase() || "",
+        gstNo: partyForm.gstNo?.toUpperCase() || "",
+        panNo: partyForm.panNo?.toUpperCase() || "",
+      });
     }
   }
 
@@ -430,13 +410,10 @@ export default function AdminDashboard() {
   }
 
   function handleReconcile(party: Party) {
-    const totals = getPartyTotals(party.id);
     updatePartyMutation.mutate({
       id: party.id,
       data: {
         status: "CLOSED",
-        reconciledMT: String(totals.dispatched),
-        invoicedMT: String(totals.dispatched),
       },
     });
   }
@@ -563,10 +540,9 @@ export default function AdminDashboard() {
         p.partyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.partyCode.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === "all" || p.status === statusFilter;
-      const matchesMixType = mixTypeFilter === "all" || p.mixType === mixTypeFilter;
-      return matchesSearch && matchesStatus && matchesMixType;
+      return matchesSearch && matchesStatus;
     });
-  }, [parties, searchQuery, statusFilter, mixTypeFilter]);
+  }, [parties, searchQuery, statusFilter]);
 
   const filteredDispatches = useMemo(() => {
     return dispatches.filter((d) => {
@@ -576,9 +552,7 @@ export default function AdminDashboard() {
         d.partyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.vehicleNo.toLowerCase().includes(searchQuery.toLowerCase());
       
-      const party = parties.find((p) => p.id === d.partyId);
       const matchesStatus = statusFilter === "all" || d.status === statusFilter;
-      const matchesMixType = mixTypeFilter === "all" || (party && party.mixType === mixTypeFilter);
       const matchesParty = partyFilter === "all" || d.partyId === partyFilter;
       const matchesSite = siteFilterReports === "all" || d.siteName === siteFilterReports;
 
@@ -590,9 +564,9 @@ export default function AdminDashboard() {
         matchesDate = matchesDate && new Date(d.createdAt) <= new Date(dateTo + "T23:59:59");
       }
 
-      return matchesSearch && matchesStatus && matchesMixType && matchesParty && matchesSite && matchesDate;
+      return matchesSearch && matchesStatus && matchesParty && matchesSite && matchesDate;
     });
-  }, [dispatches, parties, searchQuery, statusFilter, mixTypeFilter, partyFilter, siteFilterReports, dateFrom, dateTo]);
+  }, [dispatches, searchQuery, statusFilter, partyFilter, siteFilterReports, dateFrom, dateTo]);
 
   const uniqueSites = useMemo(() => {
     const sites = new Set<string>();
@@ -613,14 +587,13 @@ export default function AdminDashboard() {
   async function exportToExcel() {
     const XLSX = await import("xlsx");
     
-    const headers = ["Challan No", "Party", "Mix Type", "Site", "Vehicle", "Load (MT)", "Date", "Status", "Arrived By", "Left By"];
+    const headers = ["Challan No", "Party", "Site", "Mix Type", "Vehicle", "Load (MT)", "Date", "Status", "Arrived By", "Left By"];
     const rows = filteredDispatches.map((d) => {
-      const party = parties.find((p) => p.id === d.partyId);
       return [
         d.challanNo,
         d.partyName,
-        party?.mixType || "",
         d.siteName,
+        d.mixType || "",
         d.vehicleNo,
         Number(d.loadMT),
         format(new Date(d.createdAt), "dd/MM/yyyy HH:mm"),
@@ -726,17 +699,6 @@ export default function AdminDashboard() {
                     <SelectItem value="CLOSED">Closed</SelectItem>
                   </SelectContent>
                 </Select>
-                <Select value={mixTypeFilter} onValueChange={setMixTypeFilter}>
-                  <SelectTrigger className="w-32" data-testid="select-mix-filter">
-                    <SelectValue placeholder="Mix Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    {MIX_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
               <Button onClick={openCreatePartyDialog} data-testid="button-add-party">
                 <Plus className="h-4 w-4 mr-2" />
@@ -750,11 +712,10 @@ export default function AdminDashboard() {
                   <TableRow>
                     <TableHead>Party Name</TableHead>
                     <TableHead>Code</TableHead>
-                    <TableHead>Mix Type</TableHead>
-                    <TableHead>Order Ref</TableHead>
-                    <TableHead>Required (MT)</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>GST No</TableHead>
+                    <TableHead>PAN No</TableHead>
                     <TableHead>Dispatched (MT)</TableHead>
-                    <TableHead>Balance (MT)</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -762,27 +723,21 @@ export default function AdminDashboard() {
                 <TableBody>
                   {filteredParties.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-gray-500 py-8">
+                      <TableCell colSpan={8} className="text-center text-gray-500 py-8">
                         No parties found
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredParties.map((party) => {
                       const totals = getPartyTotals(party.id);
-                      const balance = Number(party.totalRequiredMT) - totals.dispatched;
                       return (
                         <TableRow key={party.id} data-testid={`row-party-${party.id}`}>
                           <TableCell className="font-medium">{party.partyName}</TableCell>
                           <TableCell>{party.partyCode}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{party.mixType || "DBM"}</Badge>
-                          </TableCell>
-                          <TableCell>{party.orderRefNo || "-"}</TableCell>
-                          <TableCell>{Number(party.totalRequiredMT).toFixed(2)}</TableCell>
+                          <TableCell>{party.address || "-"}</TableCell>
+                          <TableCell>{party.gstNo || "-"}</TableCell>
+                          <TableCell>{party.panNo || "-"}</TableCell>
                           <TableCell>{totals.dispatched.toFixed(2)}</TableCell>
-                          <TableCell className={balance < 0 ? "text-red-600" : ""}>
-                            {balance.toFixed(2)}
-                          </TableCell>
                           <TableCell>
                             <Badge
                               variant={party.status === "ACTIVE" ? "default" : party.status === "CLOSED" ? "secondary" : "outline"}
@@ -909,20 +864,6 @@ export default function AdminDashboard() {
                     </Select>
                   </div>
                   <div>
-                    <Label>Mix Type</Label>
-                    <Select value={mixTypeFilter} onValueChange={setMixTypeFilter}>
-                      <SelectTrigger data-testid="select-report-mix">
-                        <SelectValue placeholder="All" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Types</SelectItem>
-                        {MIX_TYPES.map((type) => (
-                          <SelectItem key={type} value={type}>{type}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
                     <Label>Party</Label>
                     <Select value={partyFilter} onValueChange={setPartyFilter}>
                       <SelectTrigger data-testid="select-report-party">
@@ -997,13 +938,12 @@ export default function AdminDashboard() {
                       </TableRow>
                     ) : (
                       filteredDispatches.map((dispatch) => {
-                        const party = parties.find((p) => p.id === dispatch.partyId);
                         return (
                           <TableRow key={dispatch.id} data-testid={`row-dispatch-${dispatch.id}`}>
                             <TableCell className="font-medium">{dispatch.challanNo}</TableCell>
                             <TableCell>{dispatch.partyName}</TableCell>
                             <TableCell>
-                              <Badge variant="outline">{party?.mixType || "DBM"}</Badge>
+                              <Badge variant="outline">{dispatch.mixType || "-"}</Badge>
                             </TableCell>
                             <TableCell>{dispatch.siteName}</TableCell>
                             <TableCell>{dispatch.vehicleNo}</TableCell>
@@ -1055,90 +995,63 @@ export default function AdminDashboard() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="partyName">Party Name *</Label>
-                <Input
-                  id="partyName"
-                  value={partyForm.partyName}
-                  onChange={(e) => {
-                    const newName = e.target.value.toUpperCase();
-                    const newCode = !editingParty ? generatePartyCode(newName, partyForm.siteName) : partyForm.partyCode;
-                    setPartyForm({ ...partyForm, partyName: newName, partyCode: newCode });
-                  }}
-                  placeholder="Enter party name"
-                  data-testid="input-party-name"
-                  style={{ textTransform: "uppercase" }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="siteName">Site Name</Label>
-                <Input
-                  id="siteName"
-                  value={partyForm.siteName}
-                  onChange={(e) => {
-                    const newSite = e.target.value.toUpperCase();
-                    const newCode = !editingParty ? generatePartyCode(partyForm.partyName, newSite) : partyForm.partyCode;
-                    setPartyForm({ ...partyForm, siteName: newSite, partyCode: newCode });
-                  }}
-                  placeholder="Enter site name"
-                  data-testid="input-site-name"
-                  style={{ textTransform: "uppercase" }}
-                />
-              </div>
-            </div>
             <div className="space-y-2">
-              <Label htmlFor="partyCode">Party Code * (Auto-generated)</Label>
+              <Label htmlFor="partyName">Party Name *</Label>
               <Input
-                id="partyCode"
-                value={partyForm.partyCode}
-                onChange={(e) => setPartyForm({ ...partyForm, partyCode: e.target.value.toUpperCase() })}
-                placeholder="Auto-generated from Party Name + Site"
-                disabled={!!editingParty}
-                data-testid="input-party-code"
+                id="partyName"
+                value={partyForm.partyName}
+                onChange={(e) => setPartyForm({ ...partyForm, partyName: e.target.value.toUpperCase() })}
+                placeholder="Enter party name"
+                data-testid="input-party-name"
+                style={{ textTransform: "uppercase" }}
+              />
+            </div>
+            {editingParty && (
+              <div className="space-y-2">
+                <Label>Party Code</Label>
+                <Input
+                  value={editingParty.partyCode}
+                  disabled
+                  className="bg-gray-100"
+                  data-testid="input-party-code"
+                />
+                <p className="text-xs text-muted-foreground">Party code is auto-generated and cannot be changed</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="address">Address</Label>
+              <Input
+                id="address"
+                value={partyForm.address}
+                onChange={(e) => setPartyForm({ ...partyForm, address: e.target.value.toUpperCase() })}
+                placeholder="Enter address (optional)"
+                data-testid="input-address"
                 style={{ textTransform: "uppercase" }}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="mixType">Mix Type *</Label>
-                <Select
-                  value={partyForm.mixType}
-                  onValueChange={(v) => setPartyForm({ ...partyForm, mixType: v })}
-                >
-                  <SelectTrigger data-testid="select-mix-type">
-                    <SelectValue placeholder="Select mix type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MIX_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="totalRequiredMT">Total Required (MT) *</Label>
+                <Label htmlFor="gstNo">GST No</Label>
                 <Input
-                  id="totalRequiredMT"
-                  type="number"
-                  step="0.01"
-                  value={partyForm.totalRequiredMT}
-                  onChange={(e) => setPartyForm({ ...partyForm, totalRequiredMT: e.target.value })}
-                  placeholder="0.00"
-                  data-testid="input-total-required"
+                  id="gstNo"
+                  value={partyForm.gstNo}
+                  onChange={(e) => setPartyForm({ ...partyForm, gstNo: e.target.value.toUpperCase() })}
+                  placeholder="Enter GST number (optional)"
+                  data-testid="input-gst-no"
+                  style={{ textTransform: "uppercase" }}
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="orderRefNo">Order Reference No</Label>
-              <Input
-                id="orderRefNo"
-                value={partyForm.orderRefNo}
-                onChange={(e) => setPartyForm({ ...partyForm, orderRefNo: e.target.value.toUpperCase() })}
-                placeholder="Optional reference number"
-                data-testid="input-order-ref"
-                style={{ textTransform: "uppercase" }}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="panNo">PAN No</Label>
+                <Input
+                  id="panNo"
+                  value={partyForm.panNo}
+                  onChange={(e) => setPartyForm({ ...partyForm, panNo: e.target.value.toUpperCase() })}
+                  placeholder="Enter PAN number (optional)"
+                  data-testid="input-pan-no"
+                  style={{ textTransform: "uppercase" }}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -1271,25 +1184,62 @@ export default function AdminDashboard() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Enter site name"
-                value={newSiteName}
-                onChange={(e) => setNewSiteName(e.target.value.toUpperCase())}
-                style={{ textTransform: "uppercase" }}
-                data-testid="input-new-site-name"
-              />
+            <div className="space-y-3 p-3 border rounded-lg bg-gray-50">
+              <div className="space-y-2">
+                <Label htmlFor="newSiteName">Site Name *</Label>
+                <Input
+                  id="newSiteName"
+                  placeholder="Enter site name"
+                  value={newSiteName}
+                  onChange={(e) => setNewSiteName(e.target.value.toUpperCase())}
+                  style={{ textTransform: "uppercase" }}
+                  data-testid="input-new-site-name"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <Label htmlFor="newSiteMixType">Mix Type *</Label>
+                  <Select value={newSiteMixType} onValueChange={setNewSiteMixType}>
+                    <SelectTrigger data-testid="select-new-site-mix-type">
+                      <SelectValue placeholder="Select mix type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MIX_TYPES.map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newSiteOrderedMT">Ordered MT</Label>
+                  <Input
+                    id="newSiteOrderedMT"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={newSiteOrderedMT}
+                    onChange={(e) => setNewSiteOrderedMT(e.target.value)}
+                    data-testid="input-new-site-ordered-mt"
+                  />
+                </div>
+              </div>
               <Button
                 onClick={() => {
                   if (managingSitesParty && newSiteName.trim()) {
-                    createSiteMutation.mutate({ partyId: managingSitesParty.id, siteName: newSiteName.trim() });
+                    createSiteMutation.mutate({ 
+                      partyId: managingSitesParty.id, 
+                      siteName: newSiteName.trim(),
+                      mixType: newSiteMixType,
+                      orderedMT: newSiteOrderedMT || "0"
+                    });
                   }
                 }}
                 disabled={!newSiteName.trim() || createSiteMutation.isPending}
+                className="w-full"
                 data-testid="button-add-site"
               >
                 <Plus className="h-4 w-4 mr-1" />
-                Add
+                Add Site
               </Button>
             </div>
 
@@ -1303,7 +1253,11 @@ export default function AdminDashboard() {
                   <div key={site.id} className="p-3 flex items-center justify-between" data-testid={`site-row-${site.id}`}>
                     <div>
                       <div className="font-medium">{site.siteName}</div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-gray-500 flex gap-2">
+                        <Badge variant="outline">{site.mixType}</Badge>
+                        <span>{Number(site.orderedMT).toFixed(2)} MT</span>
+                      </div>
+                      <div className="text-xs text-gray-400">
                         {window.location.origin}/site/{site.accessId}
                       </div>
                     </div>
@@ -1344,7 +1298,7 @@ export default function AdminDashboard() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setManagingSitesParty(null); setNewSiteName(""); }}>
+            <Button variant="outline" onClick={() => { setManagingSitesParty(null); setNewSiteName(""); setNewSiteMixType("DBM"); setNewSiteOrderedMT(""); }}>
               Close
             </Button>
           </DialogFooter>

@@ -9,8 +9,8 @@ import {
   type InsertDispatch,
   type SiteToken,
   type InsertSiteToken,
-  type PartySequence,
-  type InsertPartySequence,
+  type ChallanSequence,
+  type InsertChallanSequence,
   type AppSetting,
   type InsertAppSetting,
   users,
@@ -18,7 +18,9 @@ import {
   sites,
   dispatches,
   siteTokens,
-  partySequences,
+  challanSequences,
+  partyCodeSequence,
+  siteSequences,
   appSettings,
 } from "@shared/schema";
 import { db } from "../db";
@@ -55,9 +57,11 @@ export interface IStorage {
   createSiteToken(token: InsertSiteToken): Promise<SiteToken>;
   deactivateSiteTokensByParty(partyId: string): Promise<void>;
   
-  getPartySequence(partyId: string): Promise<PartySequence | undefined>;
-  incrementPartySequence(partyId: string): Promise<number>;
-  deletePartySequence(partyId: string): Promise<void>;
+  getNextPartyCode(): Promise<string>;
+  getNextSiteCode(partyId: string, partyCode: string): Promise<string>;
+  getChallanSequence(siteId: string): Promise<ChallanSequence | undefined>;
+  incrementChallanSequence(siteId: string): Promise<number>;
+  deleteChallanSequence(siteId: string): Promise<void>;
   
   getDispatchCountByParty(partyId: string): Promise<number>;
   deleteParty(id: string): Promise<boolean>;
@@ -104,12 +108,7 @@ export class DbStorage implements IStorage {
 
   async createParty(party: InsertParty): Promise<Party> {
     const result = await db.insert(parties).values(party).returning();
-    const newParty = result[0];
-    await db.insert(partySequences).values({
-      partyId: newParty.id,
-      currentSeq: 0,
-    });
-    return newParty;
+    return result[0];
   }
 
   async updateParty(id: string, data: Partial<Party>): Promise<Party | undefined> {
@@ -190,34 +189,69 @@ export class DbStorage implements IStorage {
     await db.update(siteTokens).set({ active: false }).where(eq(siteTokens.partyId, partyId));
   }
 
-  async getPartySequence(partyId: string): Promise<PartySequence | undefined> {
-    const result = await db.select().from(partySequences).where(eq(partySequences.partyId, partyId)).limit(1);
+  async getNextPartyCode(): Promise<string> {
+    const result = await db.select().from(partyCodeSequence).limit(1);
+    let nextSeq = 1;
+    
+    if (result[0]) {
+      await db.update(partyCodeSequence)
+        .set({ currentSeq: sql`${partyCodeSequence.currentSeq} + 1` })
+        .where(eq(partyCodeSequence.id, result[0].id));
+      nextSeq = result[0].currentSeq + 1;
+    } else {
+      await db.insert(partyCodeSequence).values({ currentSeq: 1 });
+    }
+    
+    return `PRY-${String(nextSeq).padStart(3, '0')}`;
+  }
+
+  async getNextSiteCode(partyId: string, partyCode: string): Promise<string> {
+    const result = await db.select().from(siteSequences)
+      .where(eq(siteSequences.partyId, partyId)).limit(1);
+    let nextSeq = 1;
+    
+    if (result[0]) {
+      const updated = await db.update(siteSequences)
+        .set({ currentSeq: sql`${siteSequences.currentSeq} + 1` })
+        .where(eq(siteSequences.partyId, partyId))
+        .returning();
+      nextSeq = updated[0].currentSeq;
+    } else {
+      await db.insert(siteSequences).values({ partyId, currentSeq: 1 });
+    }
+    
+    return `${partyCode}-S${nextSeq}`;
+  }
+
+  async getChallanSequence(siteId: string): Promise<ChallanSequence | undefined> {
+    const result = await db.select().from(challanSequences)
+      .where(eq(challanSequences.siteId, siteId)).limit(1);
     return result[0];
   }
 
-  async incrementPartySequence(partyId: string): Promise<number> {
+  async incrementChallanSequence(siteId: string): Promise<number> {
     const result = await db
-      .update(partySequences)
+      .update(challanSequences)
       .set({
-        currentSeq: sql`${partySequences.currentSeq} + 1`,
+        currentSeq: sql`${challanSequences.currentSeq} + 1`,
       })
-      .where(eq(partySequences.partyId, partyId))
+      .where(eq(challanSequences.siteId, siteId))
       .returning();
     
     if (result[0]) {
       return result[0].currentSeq;
     }
     
-    const newSeq = await db.insert(partySequences).values({
-      partyId,
+    const newSeq = await db.insert(challanSequences).values({
+      siteId,
       currentSeq: 1,
     }).returning();
     
     return newSeq[0].currentSeq;
   }
 
-  async deletePartySequence(partyId: string): Promise<void> {
-    await db.delete(partySequences).where(eq(partySequences.partyId, partyId));
+  async deleteChallanSequence(siteId: string): Promise<void> {
+    await db.delete(challanSequences).where(eq(challanSequences.siteId, siteId));
   }
 
   async getDispatchCountByParty(partyId: string): Promise<number> {

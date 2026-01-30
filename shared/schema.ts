@@ -23,25 +23,36 @@ export type User = typeof users.$inferSelect;
 export const parties = pgTable("parties", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   partyName: text("party_name").notNull(),
-  siteName: text("site_name"),
   partyCode: text("party_code").notNull().unique(),
-  orderRefNo: text("order_ref_no"),
-  mixType: text("mix_type").notNull().default("DBM"),
-  totalRequiredMT: numeric("total_required_mt", { precision: 10, scale: 2 }).notNull(),
+  address: text("address"),
+  gstNo: text("gst_no"),
+  panNo: text("pan_no"),
   status: text("status").notNull(),
   accessId: text("access_id").notNull().unique(),
-  reconciledMT: numeric("reconciled_mt", { precision: 10, scale: 2 }).notNull().default("0"),
-  invoicedMT: numeric("invoiced_mt", { precision: 10, scale: 2 }).notNull().default("0"),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const partyCodeSequence = pgTable("party_code_sequence", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  currentSeq: integer("current_seq").notNull().default(0),
 });
 
 export const sites = pgTable("sites", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   partyId: varchar("party_id").notNull().references(() => parties.id, { onDelete: "cascade" }),
+  siteCode: text("site_code").notNull(),
   siteName: text("site_name").notNull(),
+  mixType: text("mix_type").notNull().default("DBM"),
+  orderedMT: numeric("ordered_mt", { precision: 10, scale: 2 }).notNull().default("0"),
   accessId: text("access_id").notNull().unique(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const siteSequences = pgTable("site_sequences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  partyId: varchar("party_id").notNull().references(() => parties.id).unique(),
+  currentSeq: integer("current_seq").notNull().default(0),
 });
 
 export const insertSiteSchema = createInsertSchema(sites).omit({
@@ -66,9 +77,10 @@ export const dispatches = pgTable("dispatches", {
   partyId: varchar("party_id").notNull().references(() => parties.id),
   partyName: text("party_name").notNull(),
   partyCode: text("party_code").notNull(),
-  orderRefNo: text("order_ref_no"),
   siteId: varchar("site_id").references(() => sites.id),
+  siteCode: text("site_code"),
   siteName: text("site_name").notNull(),
+  mixType: text("mix_type"),
   vehicleNo: text("vehicle_no").notNull(),
   loadMT: numeric("load_mt", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -105,18 +117,18 @@ export const insertSiteTokenSchema = createInsertSchema(siteTokens).omit({
 export type InsertSiteToken = z.infer<typeof insertSiteTokenSchema>;
 export type SiteToken = typeof siteTokens.$inferSelect;
 
-export const partySequences = pgTable("party_sequences", {
+export const challanSequences = pgTable("challan_sequences", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  partyId: varchar("party_id").notNull().references(() => parties.id).unique(),
+  siteId: varchar("site_id").notNull().references(() => sites.id).unique(),
   currentSeq: integer("current_seq").notNull().default(0),
 });
 
-export const insertPartySequenceSchema = createInsertSchema(partySequences).omit({
+export const insertChallanSequenceSchema = createInsertSchema(challanSequences).omit({
   id: true,
 });
 
-export type InsertPartySequence = z.infer<typeof insertPartySequenceSchema>;
-export type PartySequence = typeof partySequences.$inferSelect;
+export type InsertChallanSequence = z.infer<typeof insertChallanSequenceSchema>;
+export type ChallanSequence = typeof challanSequences.$inferSelect;
 
 export const appSettings = pgTable("app_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
