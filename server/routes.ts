@@ -377,6 +377,67 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/parties/:partyId/sites", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { partyId } = req.params;
+      const sites = await storage.getSitesByParty(partyId);
+      return res.json(sites);
+    } catch (error) {
+      console.error("Get sites error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/parties/:partyId/sites", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { partyId } = req.params;
+      const { siteName } = req.body;
+
+      if (!siteName || typeof siteName !== "string" || siteName.trim().length === 0) {
+        return res.status(400).json({ error: "Site name is required" });
+      }
+
+      const party = await storage.getParty(partyId);
+      if (!party) {
+        return res.status(404).json({ error: "Party not found" });
+      }
+
+      const accessId = randomToken();
+      const site = await storage.createSite({
+        partyId,
+        siteName: siteName.trim().toUpperCase(),
+        accessId,
+      });
+
+      return res.json(site);
+    } catch (error) {
+      console.error("Create site error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/sites/:id", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { ownerPin } = req.body;
+
+      const storedOwnerPin = await storage.getSetting("owner_pin");
+      if (ownerPin !== storedOwnerPin) {
+        return res.status(403).json({ error: "Invalid owner PIN" });
+      }
+
+      const deleted = await storage.deleteSite(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Site not found" });
+      }
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Delete site error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.get("/api/dispatches", requireAuth, async (req: Request, res: Response) => {
     try {
       if (req.session.role === "SITE") {

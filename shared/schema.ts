@@ -36,6 +36,22 @@ export const parties = pgTable("parties", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const sites = pgTable("sites", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  partyId: varchar("party_id").notNull().references(() => parties.id, { onDelete: "cascade" }),
+  siteName: text("site_name").notNull(),
+  accessId: text("access_id").notNull().unique(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertSiteSchema = createInsertSchema(sites).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSite = z.infer<typeof insertSiteSchema>;
+export type Site = typeof sites.$inferSelect;
+
 export const insertPartySchema = createInsertSchema(parties).omit({
   id: true,
   createdAt: true,
@@ -51,6 +67,7 @@ export const dispatches = pgTable("dispatches", {
   partyName: text("party_name").notNull(),
   partyCode: text("party_code").notNull(),
   orderRefNo: text("order_ref_no"),
+  siteId: varchar("site_id").references(() => sites.id),
   siteName: text("site_name").notNull(),
   vehicleNo: text("vehicle_no").notNull(),
   loadMT: numeric("load_mt", { precision: 10, scale: 2 }).notNull(),

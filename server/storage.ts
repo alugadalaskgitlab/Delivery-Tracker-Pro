@@ -3,6 +3,8 @@ import {
   type InsertUser,
   type Party,
   type InsertParty,
+  type Site,
+  type InsertSite,
   type Dispatch,
   type InsertDispatch,
   type SiteToken,
@@ -13,6 +15,7 @@ import {
   type InsertAppSetting,
   users,
   parties,
+  sites,
   dispatches,
   siteTokens,
   partySequences,
@@ -33,9 +36,16 @@ export interface IStorage {
   createParty(party: InsertParty): Promise<Party>;
   updateParty(id: string, data: Partial<Party>): Promise<Party | undefined>;
   
+  getSitesByParty(partyId: string): Promise<Site[]>;
+  getSite(id: string): Promise<Site | undefined>;
+  getSiteByAccessId(accessId: string): Promise<Site | undefined>;
+  createSite(site: InsertSite): Promise<Site>;
+  deleteSite(id: string): Promise<boolean>;
+  
   getDispatches(): Promise<Dispatch[]>;
   getDispatch(id: string): Promise<Dispatch | undefined>;
   getDispatchesByParty(partyId: string): Promise<Dispatch[]>;
+  getDispatchesBySite(siteId: string): Promise<Dispatch[]>;
   getDispatchesByCreator(userId: string): Promise<Dispatch[]>;
   createDispatch(dispatch: InsertDispatch): Promise<Dispatch>;
   updateDispatch(id: string, data: Partial<Dispatch>): Promise<Dispatch | undefined>;
@@ -107,6 +117,30 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
+  async getSitesByParty(partyId: string): Promise<Site[]> {
+    return await db.select().from(sites).where(eq(sites.partyId, partyId)).orderBy(desc(sites.createdAt));
+  }
+
+  async getSite(id: string): Promise<Site | undefined> {
+    const result = await db.select().from(sites).where(eq(sites.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getSiteByAccessId(accessId: string): Promise<Site | undefined> {
+    const result = await db.select().from(sites).where(eq(sites.accessId, accessId)).limit(1);
+    return result[0];
+  }
+
+  async createSite(site: InsertSite): Promise<Site> {
+    const result = await db.insert(sites).values(site).returning();
+    return result[0];
+  }
+
+  async deleteSite(id: string): Promise<boolean> {
+    const result = await db.delete(sites).where(eq(sites.id, id)).returning();
+    return result.length > 0;
+  }
+
   async getDispatches(): Promise<Dispatch[]> {
     return await db.select().from(dispatches).orderBy(desc(dispatches.createdAt));
   }
@@ -118,6 +152,10 @@ export class DbStorage implements IStorage {
 
   async getDispatchesByParty(partyId: string): Promise<Dispatch[]> {
     return await db.select().from(dispatches).where(eq(dispatches.partyId, partyId)).orderBy(desc(dispatches.createdAt));
+  }
+
+  async getDispatchesBySite(siteId: string): Promise<Dispatch[]> {
+    return await db.select().from(dispatches).where(eq(dispatches.siteId, siteId)).orderBy(desc(dispatches.createdAt));
   }
 
   async getDispatchesByCreator(userId: string): Promise<Dispatch[]> {
