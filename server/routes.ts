@@ -502,7 +502,7 @@ export async function registerRoutes(
       
       const sequence = await storage.getChallanSequence(siteId);
       const nextSeq = sequence ? sequence.currentSeq + 1 : 1;
-      const challanNo = `${party.partyCode}-${site.siteCode}-${String(nextSeq).padStart(4, '0')}`;
+      const challanNo = `${site.siteCode}-${String(nextSeq).padStart(4, '0')}`;
       
       return res.json({ challanNo, nextSeq });
     } catch (error) {
@@ -555,7 +555,7 @@ export async function registerRoutes(
       }
 
       const nextSeq = await storage.incrementChallanSequence(siteId);
-      const challanNo = `${party.partyCode}-${site.siteCode}-${String(nextSeq).padStart(4, '0')}`;
+      const challanNo = `${site.siteCode}-${String(nextSeq).padStart(4, '0')}`;
 
       const dispatch = await storage.createDispatch({
         challanNo,
