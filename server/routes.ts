@@ -301,11 +301,24 @@ export async function registerRoutes(
   app.patch("/api/parties/:id", requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const party = await storage.updateParty(id, req.body);
       
-      if (!party) {
+      const currentParty = await storage.getParty(id);
+      if (!currentParty) {
         return res.status(404).json({ error: "Party not found" });
       }
+
+      const updateData = { ...req.body };
+      
+      if (req.body.status === "ACTIVE" && currentParty.status !== "ACTIVE") {
+        updateData.accessId = randomToken();
+        
+        const sites = await storage.getSitesByParty(id);
+        for (const site of sites) {
+          await storage.updateSite(site.id, { accessId: randomToken() });
+        }
+      }
+      
+      const party = await storage.updateParty(id, updateData);
 
       if (req.body.status && req.body.status !== "ACTIVE") {
         await storage.deactivateSiteTokensByParty(id);
