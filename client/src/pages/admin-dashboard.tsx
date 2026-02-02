@@ -394,10 +394,11 @@ export default function AdminDashboard() {
   });
 
   const updateSiteMutation = useMutation({
-    mutationFn: async ({ id, ownerPin, siteName, mixType, orderedMT, status }: { 
+    mutationFn: async ({ id, ownerPin, siteName, siteCode, mixType, orderedMT, status }: { 
       id: string; 
       ownerPin: string; 
       siteName?: string; 
+      siteCode?: string;
       mixType?: string; 
       orderedMT?: string;
       status?: string;
@@ -405,7 +406,7 @@ export default function AdminDashboard() {
       const res = await fetch(`/api/sites/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerPin, siteName, mixType, orderedMT, status }),
+        body: JSON.stringify({ ownerPin, siteName, siteCode, mixType, orderedMT, status }),
       });
       if (!res.ok) {
         const error = await res.json();
@@ -1678,19 +1679,19 @@ export default function AdminDashboard() {
               ) : (
                 partySites.map((site) => (
                   <div key={site.id} className="p-3 flex items-center justify-between" data-testid={`site-row-${site.id}`}>
-                    <div>
-                      <div className="font-medium flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium flex items-center gap-2 flex-wrap">
                         {site.siteName}
+                        <Badge variant="outline" className="font-mono text-xs bg-blue-50 text-blue-700 border-blue-200">
+                          {site.siteCode}
+                        </Badge>
                         <Badge variant={site.status === "ACTIVE" ? "default" : "secondary"}>
                           {site.status || "ACTIVE"}
                         </Badge>
                       </div>
-                      <div className="text-xs text-gray-500 flex gap-2">
-                        <Badge variant="outline">{site.mixType}</Badge>
+                      <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="text-xs">{site.mixType}</Badge>
                         <span>{Number(site.orderedMT).toFixed(2)} MT</span>
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        {window.location.origin}/site/{site.accessId}
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
