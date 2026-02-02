@@ -331,6 +331,7 @@ export default function AdminDashboard() {
       const balanceMT = orderedMT - dispatchedMT;
       return {
         id: site.id,
+        partyId: site.partyId,
         partyName: party?.partyName || "Unknown",
         partyCode: party?.partyCode || "-",
         siteName: site.siteName,
@@ -677,6 +678,54 @@ export default function AdminDashboard() {
   }, [parties, dispatches]);
 
   function exportToExcel() {
+    const dateRangeStr = dateFrom || dateTo 
+      ? `Date: ${dateFrom || "Start"} to ${dateTo || "Today"}`
+      : `Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`;
+    
+    const partyInfo = partyFilter !== "all" 
+      ? parties.find(p => p.id === partyFilter)?.partyName || ""
+      : "";
+    const siteInfo = siteFilterReports !== "all"
+      ? siteSummaryData.find(s => s.id === siteFilterReports)?.siteName || ""
+      : "";
+    
+    const totalDispatched = filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
+    
+    const summaryRows: (string | number)[][] = [];
+    summaryRows.push(["Dispatch Report"]);
+    summaryRows.push([dateRangeStr]);
+    if (partyInfo) summaryRows.push([`Party: ${partyInfo}`]);
+    if (siteInfo) summaryRows.push([`Site: ${siteInfo}`]);
+    summaryRows.push([]);
+    summaryRows.push(["Summary"]);
+    
+    if (siteFilterReports !== "all") {
+      const site = siteSummaryData.find(s => s.id === siteFilterReports);
+      summaryRows.push(["Ordered (MT)", site ? site.orderedMT.toFixed(2) : "0.00"]);
+      summaryRows.push(["Dispatched (MT)", totalDispatched.toFixed(2)]);
+      summaryRows.push(["Pending (MT)", site ? site.balanceMT.toFixed(2) : "0.00"]);
+      summaryRows.push(["Dispatch Count", filteredDispatches.length]);
+    } else if (partyFilter !== "all") {
+      const partySites = siteSummaryData.filter(s => s.partyId === partyFilter);
+      const partyOrdered = partySites.reduce((sum, s) => sum + s.orderedMT, 0);
+      const partyBalance = partyOrdered - partySites.reduce((sum, s) => sum + s.dispatchedMT, 0);
+      summaryRows.push(["Sites", partySites.length]);
+      summaryRows.push(["Total Ordered (MT)", partyOrdered.toFixed(2)]);
+      summaryRows.push(["Dispatched in Range (MT)", totalDispatched.toFixed(2)]);
+      summaryRows.push(["Pending (MT)", partyBalance.toFixed(2)]);
+      summaryRows.push(["Dispatch Count", filteredDispatches.length]);
+    } else {
+      const totalOrdered = siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0);
+      const totalDispatchedAll = siteSummaryData.reduce((sum, s) => sum + s.dispatchedMT, 0);
+      summaryRows.push(["Total Parties", parties.length]);
+      summaryRows.push(["Active Parties", parties.filter(p => p.status === "ACTIVE").length]);
+      summaryRows.push(["Total Ordered (MT)", totalOrdered.toFixed(2)]);
+      summaryRows.push(["Total Dispatched (MT)", totalDispatchedAll.toFixed(2)]);
+      summaryRows.push(["Pending (MT)", (totalOrdered - totalDispatchedAll).toFixed(2)]);
+      summaryRows.push(["Dispatches in Range", filteredDispatches.length]);
+    }
+    summaryRows.push([]);
+    
     const headers = ["Challan No", "Party", "Site", "Mix Type", "Vehicle", "Load (MT)", "Date", "Status", "Received By", "Truck Released By"];
     const rows = filteredDispatches.map((d) => {
       return [
@@ -693,15 +742,94 @@ export default function AdminDashboard() {
       ];
     });
 
-    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const worksheet = XLSX.utils.aoa_to_sheet([...summaryRows, headers, ...rows]);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Dispatches");
     
-    XLSX.writeFile(workbook, `dispatches_${format(new Date(), "yyyyMMdd_HHmmss")}.xlsx`);
+    const fileName = partyInfo 
+      ? `${partyInfo.replace(/\s+/g, "_")}_dispatches_${format(new Date(), "yyyyMMdd")}.xlsx`
+      : `dispatches_${format(new Date(), "yyyyMMdd_HHmmss")}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
   }
 
   function handlePrint() {
-    window.print();
+    const dateRangeStr = dateFrom || dateTo 
+      ? `Date: ${dateFrom || "Start"} to ${dateTo || "Today"}`
+      : `Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`;
+    
+    const partyInfo = partyFilter !== "all" 
+      ? parties.find(p => p.id === partyFilter)?.partyName || ""
+      : "";
+    const siteInfo = siteFilterReports !== "all"
+      ? siteSummaryData.find(s => s.id === siteFilterReports)?.siteName || ""
+      : "";
+    
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Dispatch Report</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              h1 { font-size: 18px; margin-bottom: 5px; }
+              .date-range { color: #666; font-size: 12px; margin-bottom: 10px; }
+              .filter-info { font-size: 12px; margin-bottom: 15px; }
+              table { width: 100%; border-collapse: collapse; font-size: 11px; }
+              th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+              th { background: #f5f5f5; font-weight: bold; }
+              .summary { margin-bottom: 20px; }
+              .summary-item { display: inline-block; margin-right: 30px; }
+              @media print { body { padding: 0; } }
+            </style>
+          </head>
+          <body>
+            <h1>Dispatch Report</h1>
+            <div class="date-range">${dateRangeStr}</div>
+            ${partyInfo ? `<div class="filter-info">Party: ${partyInfo}</div>` : ""}
+            ${siteInfo ? `<div class="filter-info">Site: ${siteInfo}</div>` : ""}
+            <div class="summary">
+              <span class="summary-item"><strong>Dispatches:</strong> ${filteredDispatches.length}</span>
+              <span class="summary-item"><strong>Total Qty:</strong> ${filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0).toFixed(2)} MT</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Challan No</th>
+                  <th>Party</th>
+                  <th>Site</th>
+                  <th>Mix Type</th>
+                  <th>Vehicle</th>
+                  <th>Load (MT)</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Received By</th>
+                  <th>Truck Released By</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filteredDispatches.map(d => `
+                  <tr>
+                    <td>${d.challanNo}</td>
+                    <td>${d.partyName}</td>
+                    <td>${d.siteName}</td>
+                    <td>${d.mixType || "-"}</td>
+                    <td>${d.vehicleNo}</td>
+                    <td>${Number(d.loadMT).toFixed(2)}</td>
+                    <td>${format(new Date(d.createdAt), "dd/MM/yyyy HH:mm")}</td>
+                    <td>${d.status}</td>
+                    <td>${d.arrivedByName || "-"}</td>
+                    <td>${d.leftByName || "-"}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+    }
   }
 
   return (
@@ -1044,95 +1172,152 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
 
-            {siteFilterReports !== "all" ? (
-              <Card className="bg-gradient-to-r from-blue-50 to-green-50">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">
-                    Site Summary: {(() => {
-                      const site = siteSummaryData.find(s => s.id === siteFilterReports);
-                      return site ? `${site.siteName} (${site.siteCode})` : siteFilterReports;
-                    })()}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <div className="text-xs text-gray-500">Ordered</div>
-                      <div className="text-xl font-bold text-blue-600" data-testid="report-site-ordered">
-                        {(() => {
-                          const site = siteSummaryData.find(s => s.id === siteFilterReports);
-                          return site ? site.orderedMT.toFixed(2) : "0.00";
-                        })()} MT
+            {(() => {
+              const filteredDispatchedTotal = filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
+              const hasDateFilter = dateFrom || dateTo;
+              const hasPartyFilter = partyFilter !== "all";
+              const hasSiteFilter = siteFilterReports !== "all";
+
+              if (hasSiteFilter) {
+                const site = siteSummaryData.find(s => s.id === siteFilterReports);
+                const siteDispatchedInRange = filteredDispatchedTotal;
+                return (
+                  <Card className="bg-gradient-to-r from-blue-50 to-green-50" id="report-summary">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">
+                        Site Summary: {site ? `${site.siteName} (${site.siteCode})` : ""}
+                        {hasDateFilter && <span className="text-sm font-normal ml-2">({dateFrom || "Start"} to {dateTo || "Today"})</span>}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <div className="text-xs text-gray-500">Ordered</div>
+                          <div className="text-xl font-bold text-blue-600" data-testid="report-site-ordered">
+                            {site ? site.orderedMT.toFixed(2) : "0.00"} MT
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Dispatched {hasDateFilter ? "(In Range)" : ""}</div>
+                          <div className="text-xl font-bold text-green-600" data-testid="report-site-dispatched">
+                            {siteDispatchedInRange.toFixed(2)} MT
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Balance</div>
+                          <div className="text-xl font-bold" data-testid="report-site-balance">
+                            {site ? site.balanceMT.toFixed(2) : "0.00"} MT
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Dispatch Count</div>
+                          <div className="text-xl font-bold" data-testid="report-site-count">
+                            {filteredDispatches.length}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-500">Dispatched</div>
-                      <div className="text-xl font-bold text-green-600" data-testid="report-site-dispatched">
-                        {filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0).toFixed(2)} MT
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              if (hasPartyFilter) {
+                const partySites = siteSummaryData.filter(s => s.partyId === partyFilter);
+                const partyOrdered = partySites.reduce((sum, s) => sum + s.orderedMT, 0);
+                const partyDispatched = filteredDispatchedTotal;
+                const partyBalance = partyOrdered - partySites.reduce((sum, s) => sum + s.dispatchedMT, 0);
+                const partyName = parties.find(p => p.id === partyFilter)?.partyName || "";
+                return (
+                  <Card className="bg-gradient-to-r from-purple-50 to-blue-50" id="report-summary">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">
+                        Party Summary: {partyName}
+                        {hasDateFilter && <span className="text-sm font-normal ml-2">({dateFrom || "Start"} to {dateTo || "Today"})</span>}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div>
+                          <div className="text-xs text-gray-500">Sites</div>
+                          <div className="text-xl font-bold text-blue-600" data-testid="report-party-sites">
+                            {partySites.length}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Total Ordered</div>
+                          <div className="text-xl font-bold text-purple-600" data-testid="report-party-ordered">
+                            {partyOrdered.toFixed(2)} MT
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Dispatched {hasDateFilter ? "(In Range)" : ""}</div>
+                          <div className="text-xl font-bold text-green-600" data-testid="report-party-dispatched">
+                            {partyDispatched.toFixed(2)} MT
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Pending</div>
+                          <div className="text-xl font-bold text-orange-600" data-testid="report-party-balance">
+                            {partyBalance.toFixed(2)} MT
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500">Dispatches</div>
+                          <div className="text-xl font-bold" data-testid="report-party-count">
+                            {filteredDispatches.length}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-500">Balance</div>
-                      <div className="text-xl font-bold" data-testid="report-site-balance">
-                        {(() => {
-                          const site = siteSummaryData.find(s => s.id === siteFilterReports);
-                          return site ? site.balanceMT.toFixed(2) : "0.00";
-                        })()} MT
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4" id="report-summary">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold text-blue-600" data-testid="report-total-parties">
+                        {parties.length}
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-500">Dispatch Count</div>
-                      <div className="text-xl font-bold" data-testid="report-site-count">
-                        {filteredDispatches.length}
+                      <p className="text-sm text-gray-500">Total Parties</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold text-green-600" data-testid="report-active-parties">
+                        {parties.filter(p => p.status === "ACTIVE").length}
                       </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-blue-600" data-testid="report-total-parties">
-                      {parties.length}
-                    </div>
-                    <p className="text-sm text-gray-500">Total Parties</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-green-600" data-testid="report-active-parties">
-                      {parties.filter(p => p.status === "ACTIVE").length}
-                    </div>
-                    <p className="text-sm text-gray-500">Active Parties</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-purple-600" data-testid="report-total-ordered">
-                      {siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0).toFixed(2)} MT
-                    </div>
-                    <p className="text-sm text-gray-500">Total Ordered</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-teal-600" data-testid="report-total-dispatched">
-                      {siteSummaryData.reduce((sum, s) => sum + s.dispatchedMT, 0).toFixed(2)} MT
-                    </div>
-                    <p className="text-sm text-gray-500">Total Dispatched</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-orange-600" data-testid="report-balance">
-                      {(siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0) - siteSummaryData.reduce((sum, s) => sum + s.dispatchedMT, 0)).toFixed(2)} MT
-                    </div>
-                    <p className="text-sm text-gray-500">Pending Quantity</p>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+                      <p className="text-sm text-gray-500">Active Parties</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold text-purple-600" data-testid="report-total-ordered">
+                        {siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0).toFixed(2)} MT
+                      </div>
+                      <p className="text-sm text-gray-500">Total Ordered</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold text-teal-600" data-testid="report-total-dispatched">
+                        {hasDateFilter ? filteredDispatchedTotal.toFixed(2) : siteSummaryData.reduce((sum, s) => sum + s.dispatchedMT, 0).toFixed(2)} MT
+                      </div>
+                      <p className="text-sm text-gray-500">Total Dispatched {hasDateFilter ? "(In Range)" : ""}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-2xl font-bold text-orange-600" data-testid="report-balance">
+                        {(siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0) - siteSummaryData.reduce((sum, s) => sum + s.dispatchedMT, 0)).toFixed(2)} MT
+                      </div>
+                      <p className="text-sm text-gray-500">Pending Quantity</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              );
+            })()}
 
             <Card>
               <CardHeader>
