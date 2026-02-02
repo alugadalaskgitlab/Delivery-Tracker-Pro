@@ -643,7 +643,7 @@ export default function AdminDashboard() {
       
       const matchesStatus = statusFilter === "all" || d.status === statusFilter;
       const matchesParty = partyFilter === "all" || d.partyId === partyFilter;
-      const matchesSite = siteFilterReports === "all" || d.siteName === siteFilterReports;
+      const matchesSite = siteFilterReports === "all" || d.siteId === siteFilterReports;
 
       let matchesDate = true;
       if (dateFrom) {
@@ -657,16 +657,12 @@ export default function AdminDashboard() {
     });
   }, [dispatches, searchQuery, statusFilter, partyFilter, siteFilterReports, dateFrom, dateTo]);
 
-  const uniqueSites = useMemo(() => {
-    const sites = new Set<string>();
-    const filteredByParty = partyFilter === "all" 
-      ? dispatches 
-      : dispatches.filter((d) => d.partyId === partyFilter);
-    filteredByParty.forEach((d) => {
-      if (d.siteName) sites.add(d.siteName);
-    });
-    return Array.from(sites).sort();
-  }, [dispatches, partyFilter]);
+  const uniqueSitesForFilter = useMemo(() => {
+    const filteredSites = partyFilter === "all" 
+      ? allSites 
+      : allSites.filter((s) => s.partyId === partyFilter);
+    return filteredSites.map(s => ({ id: s.id, siteName: s.siteName, siteCode: s.siteCode }));
+  }, [allSites, partyFilter]);
 
   useEffect(() => {
     setSiteFilterReports("all");
@@ -1028,8 +1024,8 @@ export default function AdminDashboard() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Sites</SelectItem>
-                        {uniqueSites.map((site) => (
-                          <SelectItem key={site} value={site}>{site}</SelectItem>
+                        {uniqueSitesForFilter.map((site) => (
+                          <SelectItem key={site.id} value={site.id}>{site.siteName} ({site.siteCode})</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1051,7 +1047,12 @@ export default function AdminDashboard() {
             {siteFilterReports !== "all" ? (
               <Card className="bg-gradient-to-r from-blue-50 to-green-50">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Site Summary: {siteFilterReports}</CardTitle>
+                  <CardTitle className="text-lg">
+                    Site Summary: {(() => {
+                      const site = siteSummaryData.find(s => s.id === siteFilterReports);
+                      return site ? `${site.siteName} (${site.siteCode})` : siteFilterReports;
+                    })()}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1059,7 +1060,7 @@ export default function AdminDashboard() {
                       <div className="text-xs text-gray-500">Ordered</div>
                       <div className="text-xl font-bold text-blue-600" data-testid="report-site-ordered">
                         {(() => {
-                          const site = siteSummaryData.find(s => s.siteName === siteFilterReports);
+                          const site = siteSummaryData.find(s => s.id === siteFilterReports);
                           return site ? site.orderedMT.toFixed(2) : "0.00";
                         })()} MT
                       </div>
@@ -1074,7 +1075,7 @@ export default function AdminDashboard() {
                       <div className="text-xs text-gray-500">Balance</div>
                       <div className="text-xl font-bold" data-testid="report-site-balance">
                         {(() => {
-                          const site = siteSummaryData.find(s => s.siteName === siteFilterReports);
+                          const site = siteSummaryData.find(s => s.id === siteFilterReports);
                           return site ? site.balanceMT.toFixed(2) : "0.00";
                         })()} MT
                       </div>
