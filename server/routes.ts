@@ -17,9 +17,6 @@ function slugify(s: string) {
     .slice(0, 64);
 }
 
-function formatChallan(partyCode: string, seq: number) {
-  return `${partyCode}-${String(seq).padStart(4, "0")}`;
-}
 
 function randomToken() {
   return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
@@ -277,7 +274,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Party name is required" });
       }
 
-      const partyCode = await storage.getNextPartyCode();
+      const partyCode = await storage.generatePartyCode(partyName);
       const accessId = slugify(partyCode);
 
       const party = await storage.createParty({
@@ -407,7 +404,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Party not found" });
       }
 
-      const siteCode = await storage.getNextSiteCode(partyId, party.partyCode);
+      const siteCode = await storage.generateSiteCode(party.partyCode, siteName);
       const accessId = randomToken();
       
       const site = await storage.createSite({
@@ -461,15 +458,16 @@ export async function registerRoutes(
   app.put("/api/sites/:id", requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { ownerPin, siteName, mixType, orderedMT, status } = req.body;
+      const { ownerPin, siteName, siteCode, mixType, orderedMT, status } = req.body;
 
       const storedOwnerPin = await storage.getSetting("owner_pin");
       if (ownerPin !== storedOwnerPin) {
         return res.status(403).json({ error: "Invalid owner PIN" });
       }
 
-      const updateData: { siteName?: string; mixType?: string; orderedMT?: string; status?: string } = {};
+      const updateData: { siteName?: string; siteCode?: string; mixType?: string; orderedMT?: string; status?: string } = {};
       if (siteName !== undefined) updateData.siteName = siteName.toUpperCase();
+      if (siteCode !== undefined) updateData.siteCode = siteCode.toUpperCase();
       if (mixType !== undefined) updateData.mixType = mixType.toUpperCase();
       if (orderedMT !== undefined) updateData.orderedMT = orderedMT;
       if (status !== undefined) updateData.status = status;

@@ -116,6 +116,7 @@ export default function AdminDashboard() {
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [partyForm, setPartyForm] = useState({
     partyName: "",
+    partyCode: "",
     address: "",
     gstNo: "",
     panNo: "",
@@ -184,6 +185,7 @@ export default function AdminDashboard() {
   const [newSiteOrderedMT, setNewSiteOrderedMT] = useState("");
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [editSiteName, setEditSiteName] = useState("");
+  const [editSiteCode, setEditSiteCode] = useState("");
   const [editSiteMixType, setEditSiteMixType] = useState("DBM");
   const [editSiteOrderedMT, setEditSiteOrderedMT] = useState("");
   const [editSiteOwnerPin, setEditSiteOwnerPin] = useState("");
@@ -425,6 +427,7 @@ export default function AdminDashboard() {
   function resetPartyForm() {
     setPartyForm({
       partyName: "",
+      partyCode: "",
       address: "",
       gstNo: "",
       panNo: "",
@@ -441,6 +444,7 @@ export default function AdminDashboard() {
     setEditingParty(party);
     setPartyForm({
       partyName: party.partyName,
+      partyCode: party.partyCode,
       address: party.address || "",
       gstNo: party.gstNo || "",
       panNo: party.panNo || "",
@@ -459,6 +463,7 @@ export default function AdminDashboard() {
         id: editingParty.id,
         data: {
           partyName: partyForm.partyName.toUpperCase(),
+          partyCode: partyForm.partyCode.toUpperCase(),
           address: partyForm.address?.toUpperCase() || null,
           gstNo: partyForm.gstNo?.toUpperCase() || null,
           panNo: partyForm.panNo?.toUpperCase() || null,
@@ -1422,14 +1427,16 @@ export default function AdminDashboard() {
             </div>
             {editingParty && (
               <div className="space-y-2">
-                <Label>Party Code</Label>
+                <Label htmlFor="partyCode">Party Code *</Label>
                 <Input
-                  value={editingParty.partyCode}
-                  disabled
-                  className="bg-gray-100"
+                  id="partyCode"
+                  value={partyForm.partyCode}
+                  onChange={(e) => setPartyForm({ ...partyForm, partyCode: e.target.value.toUpperCase() })}
+                  placeholder="Enter party code"
                   data-testid="input-party-code"
+                  style={{ textTransform: "uppercase" }}
                 />
-                <p className="text-xs text-muted-foreground">Party code is auto-generated and cannot be changed</p>
+                <p className="text-xs text-muted-foreground">Short code for this party (e.g., SDT)</p>
               </div>
             )}
             <div className="space-y-2">
@@ -1693,6 +1700,7 @@ export default function AdminDashboard() {
                         onClick={() => {
                           setEditingSite(site);
                           setEditSiteName(site.siteName);
+                          setEditSiteCode(site.siteCode);
                           setEditSiteMixType(site.mixType);
                           setEditSiteOrderedMT(site.orderedMT);
                           setEditSiteOwnerPin("");
@@ -1769,16 +1777,30 @@ export default function AdminDashboard() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="editSiteName">Site Name *</Label>
-              <Input
-                id="editSiteName"
-                placeholder="Enter site name"
-                value={editSiteName}
-                onChange={(e) => setEditSiteName(e.target.value.toUpperCase())}
-                style={{ textTransform: "uppercase" }}
-                data-testid="input-edit-site-name"
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label htmlFor="editSiteName">Site Name *</Label>
+                <Input
+                  id="editSiteName"
+                  placeholder="Enter site name"
+                  value={editSiteName}
+                  onChange={(e) => setEditSiteName(e.target.value.toUpperCase())}
+                  style={{ textTransform: "uppercase" }}
+                  data-testid="input-edit-site-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editSiteCode">Site Code *</Label>
+                <Input
+                  id="editSiteCode"
+                  placeholder="Enter site code"
+                  value={editSiteCode}
+                  onChange={(e) => setEditSiteCode(e.target.value.toUpperCase())}
+                  style={{ textTransform: "uppercase" }}
+                  data-testid="input-edit-site-code"
+                />
+                <p className="text-xs text-muted-foreground">e.g., SDT-BASV</p>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-2">
@@ -1825,17 +1847,18 @@ export default function AdminDashboard() {
             </Button>
             <Button
               onClick={() => {
-                if (editingSite && editSiteName.trim() && editSiteOwnerPin) {
+                if (editingSite && editSiteName.trim() && editSiteCode.trim() && editSiteOwnerPin) {
                   updateSiteMutation.mutate({
                     id: editingSite.id,
                     ownerPin: editSiteOwnerPin,
                     siteName: editSiteName.trim(),
+                    siteCode: editSiteCode.trim(),
                     mixType: editSiteMixType,
                     orderedMT: editSiteOrderedMT || "0"
                   });
                 }
               }}
-              disabled={!editSiteName.trim() || !editSiteOwnerPin || updateSiteMutation.isPending}
+              disabled={!editSiteName.trim() || !editSiteCode.trim() || !editSiteOwnerPin || updateSiteMutation.isPending}
               data-testid="button-save-site-edit"
             >
               Save Changes

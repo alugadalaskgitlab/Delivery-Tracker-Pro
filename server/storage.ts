@@ -43,7 +43,7 @@ export interface IStorage {
   getSite(id: string): Promise<Site | undefined>;
   getSiteByAccessId(accessId: string): Promise<Site | undefined>;
   createSite(site: InsertSite): Promise<Site>;
-  updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'mixType' | 'orderedMT' | 'status'>>): Promise<Site | undefined>;
+  updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status'>>): Promise<Site | undefined>;
   deleteSite(id: string): Promise<boolean>;
   
   getDispatches(): Promise<Dispatch[]>;
@@ -59,8 +59,8 @@ export interface IStorage {
   createSiteToken(token: InsertSiteToken): Promise<SiteToken>;
   deactivateSiteTokensByParty(partyId: string): Promise<void>;
   
-  getNextPartyCode(): Promise<string>;
-  getNextSiteCode(partyId: string, partyCode: string): Promise<string>;
+  generatePartyCode(partyName: string): Promise<string>;
+  generateSiteCode(partyCode: string, siteName: string): Promise<string>;
   getChallanSequence(siteId: string): Promise<ChallanSequence | undefined>;
   incrementChallanSequence(siteId: string): Promise<number>;
   deleteChallanSequence(siteId: string): Promise<void>;
@@ -141,7 +141,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'mixType' | 'orderedMT' | 'status'>>): Promise<Site | undefined> {
+  async updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status'>>): Promise<Site | undefined> {
     const result = await db.update(sites).set(data).where(eq(sites.id, id)).returning();
     return result[0];
   }
@@ -200,38 +200,34 @@ export class DbStorage implements IStorage {
     await db.update(siteTokens).set({ active: false }).where(eq(siteTokens.partyId, partyId));
   }
 
-  async getNextPartyCode(): Promise<string> {
-    const result = await db.select().from(partyCodeSequence).limit(1);
-    let nextSeq = 1;
+  async generatePartyCode(partyName: string): Promise<string> {
+    const words = partyName.toUpperCase().split(/\s+/).filter(w => w.length > 0);
+    const baseCode = words.map(w => w[0]).join('');
     
-    if (result[0]) {
-      await db.update(partyCodeSequence)
-        .set({ currentSeq: sql`${partyCodeSequence.currentSeq} + 1` })
-        .where(eq(partyCodeSequence.id, result[0].id));
-      nextSeq = result[0].currentSeq + 1;
-    } else {
-      await db.insert(partyCodeSequence).values({ currentSeq: 1 });
+    let code = baseCode;
+    let counter = 1;
+    while (await this.getPartyByCode(code)) {
+      code = `${baseCode}${counter}`;
+      counter++;
     }
     
-    return `PRY-${String(nextSeq).padStart(3, '0')}`;
+    return code;
   }
 
-  async getNextSiteCode(partyId: string, partyCode: string): Promise<string> {
-    const result = await db.select().from(siteSequences)
-      .where(eq(siteSequences.partyId, partyId)).limit(1);
-    let nextSeq = 1;
+  async generateSiteCode(partyCode: string, siteName: string): Promise<string> {
+    const words = siteName.toUpperCase().split(/\s+/).filter(w => w.length > 0);
+    const siteSuffix = words.map(w => w[0]).join('');
     
-    if (result[0]) {
-      const updated = await db.update(siteSequences)
-        .set({ currentSeq: sql`${siteSequences.currentSeq} + 1` })
-        .where(eq(siteSequences.partyId, partyId))
-        .returning();
-      nextSeq = updated[0].currentSeq;
-    } else {
-      await db.insert(siteSequences).values({ partyId, currentSeq: 1 });
+    let code = `${partyCode}-${siteSuffix}`;
+    let counter = 1;
+    const existingSites = await this.getAllSites();
+    
+    while (existingSites.some(s => s.siteCode === code)) {
+      code = `${partyCode}-${siteSuffix}${counter}`;
+      counter++;
     }
     
-    return `${partyCode}-S${nextSeq}`;
+    return code;
   }
 
   async getChallanSequence(siteId: string): Promise<ChallanSequence | undefined> {
