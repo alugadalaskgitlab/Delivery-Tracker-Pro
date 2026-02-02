@@ -733,8 +733,8 @@ export async function registerRoutes(
         if (!party || party.status !== "ACTIVE") {
           return res.status(401).json({ valid: false, error: "Access closed - party/order is not active" });
         }
-        if (site.status === "CLOSED") {
-          return res.status(401).json({ valid: false, error: "This site has been closed and is no longer accepting acknowledgements" });
+        if (site.status !== "ACTIVE") {
+          return res.status(401).json({ valid: false, error: "This site link is no longer valid. Please contact the plant for a new link." });
         }
         const dispatches = await storage.getDispatchesBySite(site.id);
         const receivedMT = dispatches
