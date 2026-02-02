@@ -46,6 +46,7 @@ export const sites = pgTable("sites", {
   mixType: text("mix_type").notNull().default("DBM"),
   orderedMT: numeric("ordered_mt", { precision: 10, scale: 2 }).notNull().default("0"),
   accessId: text("access_id").notNull().unique(),
+  status: text("status").notNull().default("ACTIVE"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

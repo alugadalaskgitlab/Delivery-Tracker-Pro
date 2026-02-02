@@ -34,6 +34,7 @@ type Site = {
   mixType: string;
   orderedMT: string;
   accessId: string;
+  status: string;
 };
 
 type Dispatch = {
@@ -371,7 +372,7 @@ export default function PlantDispatch() {
                     id="notes"
                     data-testid="textarea-notes"
                     value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
+                    onChange={(e) => setNotes(e.target.value.toUpperCase())}
                     placeholder="Add any additional notes"
                     rows={2}
                   />

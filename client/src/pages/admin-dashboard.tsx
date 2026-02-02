@@ -65,6 +65,7 @@ type Site = {
   mixType: string;
   orderedMT: string;
   accessId: string;
+  status: string;
   createdAt: string;
 };
 
@@ -181,6 +182,11 @@ export default function AdminDashboard() {
   const [newSiteName, setNewSiteName] = useState("");
   const [newSiteMixType, setNewSiteMixType] = useState("DBM");
   const [newSiteOrderedMT, setNewSiteOrderedMT] = useState("");
+  const [editingSite, setEditingSite] = useState<Site | null>(null);
+  const [editSiteName, setEditSiteName] = useState("");
+  const [editSiteMixType, setEditSiteMixType] = useState("DBM");
+  const [editSiteOrderedMT, setEditSiteOrderedMT] = useState("");
+  const [editSiteOwnerPin, setEditSiteOwnerPin] = useState("");
 
   const { data: parties = [], isLoading: loadingParties } = useQuery<Party[]>({
     queryKey: ["/api/parties"],
@@ -378,6 +384,37 @@ export default function AdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/parties", managingSitesParty?.id, "sites"] });
       toast({ title: "Success", description: "Site deleted successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateSiteMutation = useMutation({
+    mutationFn: async ({ id, ownerPin, siteName, mixType, orderedMT, status }: { 
+      id: string; 
+      ownerPin: string; 
+      siteName?: string; 
+      mixType?: string; 
+      orderedMT?: string;
+      status?: string;
+    }) => {
+      const res = await fetch(`/api/sites/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerPin, siteName, mixType, orderedMT, status }),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to update site");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parties", managingSitesParty?.id, "sites"] });
+      setEditingSite(null);
+      setEditSiteOwnerPin("");
+      toast({ title: "Success", description: "Site updated successfully" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -644,7 +681,7 @@ export default function AdminDashboard() {
   }, [parties, dispatches]);
 
   function exportToExcel() {
-    const headers = ["Challan No", "Party", "Site", "Mix Type", "Vehicle", "Load (MT)", "Date", "Status", "Arrived By", "Left By"];
+    const headers = ["Challan No", "Party", "Site", "Mix Type", "Vehicle", "Load (MT)", "Date", "Status", "Received By", "Truck Released By"];
     const rows = filteredDispatches.map((d) => {
       return [
         d.challanNo,
@@ -1030,8 +1067,8 @@ export default function AdminDashboard() {
                       <TableHead>Load (MT)</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Arrived By</TableHead>
-                      <TableHead>Left By</TableHead>
+                      <TableHead>Received By</TableHead>
+                      <TableHead>Truck Released By</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1364,7 +1401,12 @@ export default function AdminDashboard() {
                 partySites.map((site) => (
                   <div key={site.id} className="p-3 flex items-center justify-between" data-testid={`site-row-${site.id}`}>
                     <div>
-                      <div className="font-medium">{site.siteName}</div>
+                      <div className="font-medium flex items-center gap-2">
+                        {site.siteName}
+                        <Badge variant={site.status === "ACTIVE" ? "default" : "secondary"}>
+                          {site.status || "ACTIVE"}
+                        </Badge>
+                      </div>
                       <div className="text-xs text-gray-500 flex gap-2">
                         <Badge variant="outline">{site.mixType}</Badge>
                         <span>{Number(site.orderedMT).toFixed(2)} MT</span>
@@ -1374,6 +1416,36 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingSite(site);
+                          setEditSiteName(site.siteName);
+                          setEditSiteMixType(site.mixType);
+                          setEditSiteOrderedMT(site.orderedMT);
+                          setEditSiteOwnerPin("");
+                        }}
+                        title="Edit site"
+                        data-testid={`button-edit-site-${site.id}`}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          const newStatus = (site.status || "ACTIVE") === "ACTIVE" ? "CLOSED" : "ACTIVE";
+                          const pin = prompt(`Enter Owner PIN to ${newStatus === "CLOSED" ? "close" : "reopen"} this site:`);
+                          if (pin) {
+                            updateSiteMutation.mutate({ id: site.id, ownerPin: pin, status: newStatus });
+                          }
+                        }}
+                        title={site.status === "ACTIVE" ? "Close site" : "Reopen site"}
+                        data-testid={`button-toggle-site-${site.id}`}
+                      >
+                        {(site.status || "ACTIVE") === "ACTIVE" ? <X className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                      </Button>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -1412,6 +1484,90 @@ export default function AdminDashboard() {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setManagingSitesParty(null); setNewSiteName(""); setNewSiteMixType("DBM"); setNewSiteOrderedMT(""); }}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingSite} onOpenChange={(open) => { if (!open) { setEditingSite(null); setEditSiteOwnerPin(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Site</DialogTitle>
+            <DialogDescription>
+              Update site details. Owner PIN is required to save changes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="editSiteName">Site Name *</Label>
+              <Input
+                id="editSiteName"
+                placeholder="Enter site name"
+                value={editSiteName}
+                onChange={(e) => setEditSiteName(e.target.value.toUpperCase())}
+                style={{ textTransform: "uppercase" }}
+                data-testid="input-edit-site-name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label htmlFor="editSiteMixType">Mix Type *</Label>
+                <Select value={editSiteMixType} onValueChange={setEditSiteMixType}>
+                  <SelectTrigger data-testid="select-edit-site-mix-type">
+                    <SelectValue placeholder="Select mix type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MIX_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editSiteOrderedMT">Ordered MT</Label>
+                <Input
+                  id="editSiteOrderedMT"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={editSiteOrderedMT}
+                  onChange={(e) => setEditSiteOrderedMT(e.target.value)}
+                  data-testid="input-edit-site-ordered-mt"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editSiteOwnerPin">Owner PIN *</Label>
+              <Input
+                id="editSiteOwnerPin"
+                type="password"
+                placeholder="Enter owner PIN to confirm"
+                value={editSiteOwnerPin}
+                onChange={(e) => setEditSiteOwnerPin(e.target.value)}
+                data-testid="input-edit-site-owner-pin"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditingSite(null); setEditSiteOwnerPin(""); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (editingSite && editSiteName.trim() && editSiteOwnerPin) {
+                  updateSiteMutation.mutate({
+                    id: editingSite.id,
+                    ownerPin: editSiteOwnerPin,
+                    siteName: editSiteName.trim(),
+                    mixType: editSiteMixType,
+                    orderedMT: editSiteOrderedMT || "0"
+                  });
+                }
+              }}
+              disabled={!editSiteName.trim() || !editSiteOwnerPin || updateSiteMutation.isPending}
+              data-testid="button-save-site-edit"
+            >
+              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -458,6 +458,34 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/sites/:id", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { ownerPin, siteName, mixType, orderedMT, status } = req.body;
+
+      const storedOwnerPin = await storage.getSetting("owner_pin");
+      if (ownerPin !== storedOwnerPin) {
+        return res.status(403).json({ error: "Invalid owner PIN" });
+      }
+
+      const updateData: { siteName?: string; mixType?: string; orderedMT?: string; status?: string } = {};
+      if (siteName !== undefined) updateData.siteName = siteName.toUpperCase();
+      if (mixType !== undefined) updateData.mixType = mixType.toUpperCase();
+      if (orderedMT !== undefined) updateData.orderedMT = orderedMT;
+      if (status !== undefined) updateData.status = status;
+
+      const updated = await storage.updateSite(id, updateData);
+      if (!updated) {
+        return res.status(404).json({ error: "Site not found" });
+      }
+
+      return res.json(updated);
+    } catch (error) {
+      console.error("Update site error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.get("/api/dispatches", requireAuth, async (req: Request, res: Response) => {
     try {
       if (req.session.role === "SITE") {
@@ -672,6 +700,9 @@ export async function registerRoutes(
         const party = await storage.getParty(site.partyId);
         if (!party || party.status !== "ACTIVE") {
           return res.status(401).json({ valid: false, error: "Access closed - party/order is not active" });
+        }
+        if (site.status === "CLOSED") {
+          return res.status(401).json({ valid: false, error: "This site has been closed and is no longer accepting acknowledgements" });
         }
         const dispatches = await storage.getDispatchesBySite(site.id);
         const receivedMT = dispatches

@@ -368,12 +368,12 @@ export default function SiteAccess() {
                           </div>
                           {dispatch.arrivedByName && (
                             <div className="text-xs text-gray-500 mt-1">
-                              Received by: {dispatch.arrivedByName}
+                              Received By: {dispatch.arrivedByName}
                             </div>
                           )}
                           {dispatch.leftByName && dispatch.status === "LEFT" && (
                             <div className="text-xs text-gray-500 mt-1">
-                              Left with: {dispatch.leftByName}
+                              Truck Released By: {dispatch.leftByName}
                             </div>
                           )}
                         </TableCell>
