@@ -29,7 +29,10 @@ type Party = {
 type Site = {
   id: string;
   partyId: string;
+  siteCode: string;
   siteName: string;
+  mixType: string;
+  orderedMT: string;
   accessId: string;
 };
 
@@ -39,6 +42,8 @@ type Dispatch = {
   partyId: string;
   partyName: string;
   partyCode: string;
+  siteId?: string | null;
+  siteCode?: string | null;
   orderRefNo?: string | null;
   siteName: string;
   vehicleNo: string;
@@ -231,14 +236,17 @@ export default function PlantDispatch() {
   };
 
   const selectedParty = parties.find((p) => p.id === partyId);
-  const partyStats = useMemo(() => {
-    if (!selectedParty) return { dispatched: 0, balance: 0 };
+  const selectedSite = sites.find((s) => s.id === siteId);
+  
+  const siteStats = useMemo(() => {
+    if (!selectedSite) return { ordered: 0, dispatched: 0, balance: 0, mixType: "DBM" };
     const dispatched = dispatches
-      .filter((d) => d.partyId === selectedParty.id)
+      .filter((d) => d.siteId === selectedSite.id)
       .reduce((sum, d) => sum + Number(d.loadMT), 0);
-    const balance = Number(selectedParty.totalRequiredMT) - dispatched;
-    return { dispatched, balance };
-  }, [selectedParty, dispatches]);
+    const ordered = Number(selectedSite.orderedMT);
+    const balance = ordered - dispatched;
+    return { ordered, dispatched, balance, mixType: selectedSite.mixType || "DBM" };
+  }, [selectedSite, dispatches]);
 
   const activeParties = parties.filter((p) => p.status === "ACTIVE");
 
@@ -287,32 +295,6 @@ export default function PlantDispatch() {
                   </Select>
                 </div>
 
-                {selectedParty && (
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Party Details</Label>
-                    <div className="p-4 border rounded-md bg-blue-50 grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div>
-                        <div className="text-xs text-gray-500">Mix Type</div>
-                        <div className="font-semibold">{selectedParty.mixType || "DBM"}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500">Order Qty</div>
-                        <div className="font-semibold">{Number(selectedParty.totalRequiredMT).toFixed(2)} MT</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500">Dispatched</div>
-                        <div className="font-semibold">{partyStats.dispatched.toFixed(2)} MT</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500">Balance</div>
-                        <div className={`font-semibold ${partyStats.balance < 0 ? "text-red-600" : "text-green-600"}`}>
-                          {partyStats.balance.toFixed(2)} MT
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 <div className="space-y-2">
                   <Label htmlFor="site">Site *</Label>
                   <Select value={siteId} onValueChange={setSiteId} disabled={!partyId}>
@@ -322,7 +304,7 @@ export default function PlantDispatch() {
                     <SelectContent>
                       {sites.map((site) => (
                         <SelectItem key={site.id} value={site.id} data-testid={`option-site-${site.id}`}>
-                          {site.siteName}
+                          {site.siteName} ({site.siteCode})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -331,6 +313,32 @@ export default function PlantDispatch() {
                     <p className="text-xs text-orange-600">No sites added for this party. Admin must add sites first.</p>
                   )}
                 </div>
+
+                {selectedSite && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Site Details</Label>
+                    <div className="p-4 border rounded-md bg-blue-50 grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <div className="text-xs text-gray-500">Mix Type</div>
+                        <div className="font-semibold">{siteStats.mixType}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-500">Ordered Qty</div>
+                        <div className="font-semibold">{siteStats.ordered.toFixed(2)} MT</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-500">Dispatched</div>
+                        <div className="font-semibold">{siteStats.dispatched.toFixed(2)} MT</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-500">Balance</div>
+                        <div className={`font-semibold ${siteStats.balance < 0 ? "text-red-600" : "text-green-600"}`}>
+                          {siteStats.balance.toFixed(2)} MT
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="vehicleNo">Vehicle Number *</Label>
