@@ -1048,40 +1048,90 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-2xl font-bold text-blue-600" data-testid="report-total-ordered">
-                    {siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0).toFixed(2)} MT
+            {siteFilterReports !== "all" ? (
+              <Card className="bg-gradient-to-r from-blue-50 to-green-50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Site Summary: {siteFilterReports}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500">Ordered</div>
+                      <div className="text-xl font-bold text-blue-600" data-testid="report-site-ordered">
+                        {(() => {
+                          const site = siteSummaryData.find(s => s.siteName === siteFilterReports);
+                          return site ? site.orderedMT.toFixed(2) : "0.00";
+                        })()} MT
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Dispatched</div>
+                      <div className="text-xl font-bold text-green-600" data-testid="report-site-dispatched">
+                        {filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0).toFixed(2)} MT
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Balance</div>
+                      <div className="text-xl font-bold" data-testid="report-site-balance">
+                        {(() => {
+                          const site = siteSummaryData.find(s => s.siteName === siteFilterReports);
+                          return site ? site.balanceMT.toFixed(2) : "0.00";
+                        })()} MT
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Dispatch Count</div>
+                      <div className="text-xl font-bold" data-testid="report-site-count">
+                        {filteredDispatches.length}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-500">Total Ordered (All Sites)</p>
                 </CardContent>
               </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-2xl font-bold text-green-600" data-testid="report-total-dispatched">
-                    {filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0).toFixed(2)} MT
-                  </div>
-                  <p className="text-sm text-gray-500">Total Dispatched (Filtered)</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-2xl font-bold" data-testid="report-balance">
-                    {(siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0) - siteSummaryData.reduce((sum, s) => sum + s.dispatchedMT, 0)).toFixed(2)} MT
-                  </div>
-                  <p className="text-sm text-gray-500">Balance (All Sites)</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-2xl font-bold" data-testid="report-dispatch-count">
-                    {filteredDispatches.length}
-                  </div>
-                  <p className="text-sm text-gray-500">Dispatches (Filtered)</p>
-                </CardContent>
-              </Card>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-2xl font-bold text-blue-600" data-testid="report-total-parties">
+                      {parties.length}
+                    </div>
+                    <p className="text-sm text-gray-500">Total Parties</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-2xl font-bold text-green-600" data-testid="report-active-parties">
+                      {parties.filter(p => p.status === "ACTIVE").length}
+                    </div>
+                    <p className="text-sm text-gray-500">Active Parties</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-2xl font-bold text-purple-600" data-testid="report-total-ordered">
+                      {siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0).toFixed(2)} MT
+                    </div>
+                    <p className="text-sm text-gray-500">Total Ordered</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-2xl font-bold text-teal-600" data-testid="report-total-dispatched">
+                      {siteSummaryData.reduce((sum, s) => sum + s.dispatchedMT, 0).toFixed(2)} MT
+                    </div>
+                    <p className="text-sm text-gray-500">Total Dispatched</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-2xl font-bold text-orange-600" data-testid="report-balance">
+                      {(siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0) - siteSummaryData.reduce((sum, s) => sum + s.dispatchedMT, 0)).toFixed(2)} MT
+                    </div>
+                    <p className="text-sm text-gray-500">Pending Quantity</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
             <Card>
               <CardHeader>

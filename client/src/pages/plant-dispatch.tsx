@@ -68,6 +68,7 @@ export default function PlantDispatch() {
   const [vehicleNo, setVehicleNo] = useState("");
   const [loadMT, setLoadMT] = useState("");
   const [notes, setNotes] = useState("");
+  const [nextChallan, setNextChallan] = useState<string | null>(null);
 
   useEffect(() => {
     initializeAudioContext();
@@ -238,6 +239,17 @@ export default function PlantDispatch() {
 
   const selectedParty = parties.find((p) => p.id === partyId);
   const selectedSite = sites.find((s) => s.id === siteId);
+
+  useEffect(() => {
+    if (siteId) {
+      fetch(`/api/sites/${siteId}/next-challan`, { credentials: "include" })
+        .then(res => res.json())
+        .then(data => setNextChallan(data.challanNo))
+        .catch(() => setNextChallan(null));
+    } else {
+      setNextChallan(null);
+    }
+  }, [siteId, dispatches]);
   
   const siteStats = useMemo(() => {
     if (!selectedSite) return { ordered: 0, dispatched: 0, balance: 0, mixType: "DBM" };
@@ -318,7 +330,13 @@ export default function PlantDispatch() {
                 {selectedSite && (
                   <div className="space-y-2 md:col-span-2">
                     <Label>Site Details</Label>
-                    <div className="p-4 border rounded-md bg-blue-50 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 border rounded-md bg-blue-50 grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div>
+                        <div className="text-xs text-gray-500">Next Challan</div>
+                        <div className="font-semibold text-purple-600" data-testid="text-next-challan">
+                          {nextChallan || "..."}
+                        </div>
+                      </div>
                       <div>
                         <div className="text-xs text-gray-500">Mix Type</div>
                         <div className="font-semibold">{siteStats.mixType}</div>

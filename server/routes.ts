@@ -486,6 +486,31 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/sites/:siteId/next-challan", requirePlantOrAdmin, async (req: Request, res: Response) => {
+    try {
+      const { siteId } = req.params;
+      
+      const site = await storage.getSite(siteId);
+      if (!site) {
+        return res.status(404).json({ error: "Site not found" });
+      }
+      
+      const party = await storage.getParty(site.partyId);
+      if (!party) {
+        return res.status(404).json({ error: "Party not found" });
+      }
+      
+      const sequence = await storage.getChallanSequence(siteId);
+      const nextSeq = sequence ? sequence.currentSeq + 1 : 1;
+      const challanNo = `${party.partyCode}-${site.siteCode}-${String(nextSeq).padStart(4, '0')}`;
+      
+      return res.json({ challanNo, nextSeq });
+    } catch (error) {
+      console.error("Get next challan error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.get("/api/dispatches", requireAuth, async (req: Request, res: Response) => {
     try {
       if (req.session.role === "SITE") {
