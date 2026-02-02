@@ -1048,6 +1048,41 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
 
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-2xl font-bold text-blue-600" data-testid="report-total-ordered">
+                    {siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0).toFixed(2)} MT
+                  </div>
+                  <p className="text-sm text-gray-500">Total Ordered (All Sites)</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-2xl font-bold text-green-600" data-testid="report-total-dispatched">
+                    {filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0).toFixed(2)} MT
+                  </div>
+                  <p className="text-sm text-gray-500">Total Dispatched (Filtered)</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-2xl font-bold" data-testid="report-balance">
+                    {(siteSummaryData.reduce((sum, s) => sum + s.orderedMT, 0) - siteSummaryData.reduce((sum, s) => sum + s.dispatchedMT, 0)).toFixed(2)} MT
+                  </div>
+                  <p className="text-sm text-gray-500">Balance (All Sites)</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-2xl font-bold" data-testid="report-dispatch-count">
+                    {filteredDispatches.length}
+                  </div>
+                  <p className="text-sm text-gray-500">Dispatches (Filtered)</p>
+                </CardContent>
+              </Card>
+            </div>
+
             <Card>
               <CardHeader>
                 <CardTitle>Dispatch Report</CardTitle>
