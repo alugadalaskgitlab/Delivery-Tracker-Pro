@@ -778,7 +778,7 @@ export default function AdminDashboard() {
     
     const printWindow = window.open("", "_blank");
     if (printWindow) {
-      printWindow.document.write(`
+      const htmlContent = `
         <html>
           <head>
             <title>Dispatch Report - Highlane Constructions Pvt Ltd</title>
@@ -845,19 +845,25 @@ export default function AdminDashboard() {
                 `).join("")}
               </tbody>
             </table>
-            <script>
-              var img = document.getElementById('logo-img');
-              if (img.complete) {
-                window.print();
-              } else {
-                img.onload = function() { window.print(); };
-                img.onerror = function() { window.print(); };
-              }
-            </script>
           </body>
         </html>
-      `);
+      `;
+      
+      printWindow.document.write(htmlContent);
       printWindow.document.close();
+      
+      // Wait for window to load then print
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+      
+      // Fallback: if onload doesn't fire (some browsers), use setTimeout
+      setTimeout(() => {
+        if (printWindow && !printWindow.closed) {
+          printWindow.focus();
+          printWindow.print();
+        }
+      }, 500);
     }
   }
 
