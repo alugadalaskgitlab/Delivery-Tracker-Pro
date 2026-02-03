@@ -846,46 +846,16 @@ export default function AdminDashboard() {
       </html>
     `;
     
-    // Create a hidden iframe for printing
-    const existingFrame = document.getElementById("print-frame");
-    if (existingFrame) {
-      existingFrame.remove();
-    }
-    
-    const iframe = document.createElement("iframe");
-    iframe.id = "print-frame";
-    iframe.style.position = "absolute";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "none";
-    iframe.style.left = "-9999px";
-    document.body.appendChild(iframe);
-    
-    const iframeDoc = iframe.contentWindow?.document;
-    if (iframeDoc) {
-      iframeDoc.open();
-      iframeDoc.write(htmlContent);
-      iframeDoc.close();
-      
-      // Use iframe onload to ensure content is fully rendered
-      iframe.onload = () => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch (e) {
-          console.error("Print error:", e);
-        }
-      };
-      
-      // Fallback timeout in case onload doesn't fire
+    // Simple approach: open new window with content and print
+    const newWindow = window.open("", "PrintWindow", "width=900,height=700");
+    if (newWindow) {
+      newWindow.document.write(htmlContent);
+      newWindow.document.close();
+      newWindow.focus();
+      // Give the page a moment to render, then trigger print
       setTimeout(() => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch (e) {
-          console.error("Print fallback error:", e);
-        }
-      }, 300);
+        newWindow.print();
+      }, 250);
     }
   }
 
