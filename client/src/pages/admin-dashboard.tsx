@@ -475,6 +475,7 @@ export default function AdminDashboard() {
     } else {
       createPartyMutation.mutate({
         partyName: partyForm.partyName.toUpperCase(),
+        partyCode: partyForm.partyCode.toUpperCase(),
         address: partyForm.address?.toUpperCase() || "",
         gstNo: partyForm.gstNo?.toUpperCase() || "",
         panNo: partyForm.panNo?.toUpperCase() || "",
@@ -800,7 +801,7 @@ export default function AdminDashboard() {
           </head>
           <body>
             <div class="header">
-              <img src="${highlaneLogo}" alt="Highlane Constructions" />
+              <img id="logo-img" src="${highlaneLogo}" alt="Highlane Constructions" />
               <h1>Highlane Constructions Pvt Ltd</h1>
               <div class="subtitle">Material Dispatch Management System</div>
             </div>
@@ -844,11 +845,19 @@ export default function AdminDashboard() {
                 `).join("")}
               </tbody>
             </table>
+            <script>
+              var img = document.getElementById('logo-img');
+              if (img.complete) {
+                window.print();
+              } else {
+                img.onload = function() { window.print(); };
+                img.onerror = function() { window.print(); };
+              }
+            </script>
           </body>
         </html>
       `);
       printWindow.document.close();
-      printWindow.print();
     }
   }
 
