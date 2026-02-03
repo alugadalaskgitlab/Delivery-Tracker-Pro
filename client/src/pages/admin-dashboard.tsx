@@ -43,7 +43,6 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import CompanyHeader from "@/components/CompanyHeader";
-import highlaneLogo from "@/assets/highlane-logo.jpeg";
 
 type PartyStatus = "ACTIVE" | "INACTIVE" | "CLOSED";
 
@@ -700,9 +699,6 @@ export default function AdminDashboard() {
     const totalDispatched = filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
     
     const summaryRows: (string | number)[][] = [];
-    summaryRows.push(["Highlane Constructions Pvt Ltd"]);
-    summaryRows.push(["Material Dispatch Management System"]);
-    summaryRows.push([]);
     summaryRows.push(["Dispatch Report"]);
     summaryRows.push([dateRangeStr]);
     if (partyInfo) summaryRows.push([`Party: ${partyInfo}`]);
@@ -780,14 +776,10 @@ export default function AdminDashboard() {
       printWindow.document.write(`
         <html>
           <head>
-            <title>Dispatch Report - Highlane Constructions Pvt Ltd</title>
+            <title>Dispatch Report</title>
             <style>
               body { font-family: Arial, sans-serif; padding: 20px; }
-              .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
-              .header img { height: 50px; margin-bottom: 5px; }
-              .header h1 { font-size: 20px; margin: 5px 0; color: #333; }
-              .header .subtitle { font-size: 12px; color: #666; }
-              .report-title { font-size: 16px; margin-bottom: 5px; font-weight: bold; }
+              h1 { font-size: 18px; margin-bottom: 5px; }
               .date-range { color: #666; font-size: 12px; margin-bottom: 10px; }
               .filter-info { font-size: 12px; margin-bottom: 15px; }
               table { width: 100%; border-collapse: collapse; font-size: 11px; }
@@ -799,12 +791,7 @@ export default function AdminDashboard() {
             </style>
           </head>
           <body>
-            <div class="header">
-              <img src="${highlaneLogo}" alt="Highlane Constructions" />
-              <h1>Highlane Constructions Pvt Ltd</h1>
-              <div class="subtitle">Material Dispatch Management System</div>
-            </div>
-            <div class="report-title">Dispatch Report</div>
+            <h1>Dispatch Report</h1>
             <div class="date-range">${dateRangeStr}</div>
             ${partyInfo ? `<div class="filter-info">Party: ${partyInfo}</div>` : ""}
             ${siteInfo ? `<div class="filter-info">Site: ${siteInfo}</div>` : ""}
