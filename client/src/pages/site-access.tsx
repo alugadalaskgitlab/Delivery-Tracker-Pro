@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Loader2, PackageCheck, Truck, XCircle } from "lucide-react";
+import CompanyHeader from "@/components/CompanyHeader";
 import { io } from "socket.io-client";
 import { playNewDispatchSound, initializeAudioContext } from "@/lib/sounds";
 import {
@@ -211,12 +212,13 @@ export default function SiteAccess() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div>
-            <h1 className="text-2xl font-bold">Dispatch Tracking</h1>
-            <p className="text-sm text-gray-600">
+        <div className="container mx-auto px-4 py-3">
+          <CompanyHeader size="small" showTagline={false} className="mb-2" />
+          <div className="text-center">
+            <span className="text-sm font-medium text-gray-600">Site Dispatch Tracking</span>
+            <p className="text-sm text-gray-500">
               {validation.partyName} ({validation.partyCode})
-              {validation.siteName && <span className="ml-2 font-medium">- {validation.siteName}</span>}
+              {validation.siteName && <span className="ml-1 font-medium">- {validation.siteName}</span>}
             </p>
           </div>
         </div>

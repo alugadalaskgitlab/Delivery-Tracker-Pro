@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Loader2, Home } from "lucide-react";
+import CompanyHeader from "@/components/CompanyHeader";
 import { playStatusUpdateSound, playNewDispatchSound, initializeAudioContext } from "@/lib/sounds";
 
 type Party = {
@@ -266,16 +267,18 @@ export default function PlantDispatch() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold">Plant Dispatch</h1>
-            <p className="text-sm text-gray-500">Create dispatches and track acknowledgements</p>
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex justify-between items-center">
+            <CompanyHeader size="small" showTagline={false} className="flex-row gap-3" />
+            <div className="flex items-center gap-4">
+              <Button variant="outline" onClick={handleLogout} data-testid="button-home" className="gap-2">
+                <Home className="h-4 w-4" />
+                Home
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <Button variant="outline" onClick={handleLogout} data-testid="button-home" className="gap-2">
-              <Home className="h-4 w-4" />
-              Home
-            </Button>
+          <div className="text-center mt-1">
+            <span className="text-sm font-medium text-gray-600">Dispatch Desk</span>
           </div>
         </div>
       </header>

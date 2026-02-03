@@ -42,6 +42,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import CompanyHeader from "@/components/CompanyHeader";
 
 type PartyStatus = "ACTIVE" | "INACTIVE" | "CLOSED";
 
@@ -841,20 +842,22 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold">Command Center</h1>
-            <p className="text-sm text-gray-500">Dispatch Management System</p>
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex justify-between items-center">
+            <CompanyHeader size="small" showTagline={false} className="flex-row gap-3" />
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setShowSettingsDialog(true)} data-testid="button-settings">
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </Button>
+              <Button variant="outline" onClick={handleLogout} data-testid="button-home">
+                <Home className="h-4 w-4 mr-2" />
+                Home
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setShowSettingsDialog(true)} data-testid="button-settings">
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
-            </Button>
-            <Button variant="outline" onClick={handleLogout} data-testid="button-home">
-              <Home className="h-4 w-4 mr-2" />
-              Home
-            </Button>
+          <div className="text-center mt-1">
+            <span className="text-sm font-medium text-gray-600">Command Center</span>
           </div>
         </div>
       </header>

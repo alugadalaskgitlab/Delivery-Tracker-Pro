@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Factory } from "lucide-react";
+import CompanyHeader from "@/components/CompanyHeader";
 import {
   Dialog,
   DialogContent,
@@ -62,8 +63,7 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-gray-100 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">DispatchPro</h1>
-          <p className="text-lg text-gray-600">Material Dispatch Management System</p>
+          <CompanyHeader size="large" />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
