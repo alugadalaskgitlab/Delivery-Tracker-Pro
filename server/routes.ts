@@ -754,6 +754,7 @@ export async function registerRoutes(
           .filter(d => d.status === "LEFT")
           .reduce((sum, d) => sum + Number(d.loadMT), 0);
         const totalDispatched = dispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
+        const orderedMT = Number(site.orderedMT || 0);
         return res.json({
           valid: true,
           partyName: party.partyName,
@@ -761,9 +762,10 @@ export async function registerRoutes(
           partyId: party.id,
           siteId: site.id,
           siteName: site.siteName,
+          orderedMT: orderedMT.toFixed(2),
           totalRequiredMT: totalDispatched.toFixed(2),
           receivedMT: receivedMT.toFixed(2),
-          balanceMT: (totalDispatched - receivedMT).toFixed(2),
+          balanceMT: (orderedMT - receivedMT).toFixed(2),
         });
       }
 

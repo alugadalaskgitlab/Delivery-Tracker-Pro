@@ -229,17 +229,15 @@ export default function SiteAccess() {
           <CardContent className="pt-6">
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <p className="text-sm text-gray-600 font-medium">
-                  {validation.siteName ? "Total Dispatched" : "Total Order"}
-                </p>
+                <p className="text-sm text-gray-600 font-medium">Total Ordered</p>
                 <p className="text-2xl font-bold text-blue-700" data-testid="qty-ordered">
-                  {Number(validation.totalRequiredMT || 0).toFixed(2)} MT
+                  {Number(validation.orderedMT || validation.totalRequiredMT || 0).toFixed(2)} MT
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-600 font-medium">Received</p>
-                <p className="text-2xl font-bold text-green-700" data-testid="qty-received">
-                  {Number(validation.receivedMT || 0).toFixed(2)} MT
+                <p className="text-sm text-gray-600 font-medium">Dispatched</p>
+                <p className="text-2xl font-bold text-green-700" data-testid="qty-dispatched">
+                  {Number(validation.totalRequiredMT || 0).toFixed(2)} MT
                 </p>
               </div>
               <div>
