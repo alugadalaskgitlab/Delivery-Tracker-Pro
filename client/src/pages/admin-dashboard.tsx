@@ -771,71 +771,87 @@ export default function AdminDashboard() {
       ? siteSummaryData.find(s => s.id === siteFilterReports)?.siteName || ""
       : "";
     
-    const printWindow = window.open("", "_blank");
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Dispatch Report</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              h1 { font-size: 18px; margin-bottom: 5px; }
-              .date-range { color: #666; font-size: 12px; margin-bottom: 10px; }
-              .filter-info { font-size: 12px; margin-bottom: 15px; }
-              table { width: 100%; border-collapse: collapse; font-size: 11px; }
-              th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
-              th { background: #f5f5f5; font-weight: bold; }
-              .summary { margin-bottom: 20px; }
-              .summary-item { display: inline-block; margin-right: 30px; }
-              @media print { body { padding: 0; } }
-            </style>
-          </head>
-          <body>
-            <h1>Dispatch Report</h1>
-            <div class="date-range">${dateRangeStr}</div>
-            ${partyInfo ? `<div class="filter-info">Party: ${partyInfo}</div>` : ""}
-            ${siteInfo ? `<div class="filter-info">Site: ${siteInfo}</div>` : ""}
-            <div class="summary">
-              <span class="summary-item"><strong>Dispatches:</strong> ${filteredDispatches.length}</span>
-              <span class="summary-item"><strong>Total Qty:</strong> ${filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0).toFixed(2)} MT</span>
-            </div>
-            <table>
-              <thead>
+    const printContent = `
+      <html>
+        <head>
+          <title>Dispatch Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { font-size: 18px; margin-bottom: 5px; }
+            .date-range { color: #666; font-size: 12px; margin-bottom: 10px; }
+            .filter-info { font-size: 12px; margin-bottom: 15px; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+            th { background: #f5f5f5; font-weight: bold; }
+            .summary { margin-bottom: 20px; }
+            .summary-item { display: inline-block; margin-right: 30px; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <h1>Dispatch Report</h1>
+          <div class="date-range">${dateRangeStr}</div>
+          ${partyInfo ? `<div class="filter-info">Party: ${partyInfo}</div>` : ""}
+          ${siteInfo ? `<div class="filter-info">Site: ${siteInfo}</div>` : ""}
+          <div class="summary">
+            <span class="summary-item"><strong>Dispatches:</strong> ${filteredDispatches.length}</span>
+            <span class="summary-item"><strong>Total Qty:</strong> ${filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0).toFixed(2)} MT</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Challan No</th>
+                <th>Party</th>
+                <th>Site</th>
+                <th>Mix Type</th>
+                <th>Vehicle</th>
+                <th>Load (MT)</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Received By</th>
+                <th>Truck Released By</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredDispatches.map(d => `
                 <tr>
-                  <th>Challan No</th>
-                  <th>Party</th>
-                  <th>Site</th>
-                  <th>Mix Type</th>
-                  <th>Vehicle</th>
-                  <th>Load (MT)</th>
-                  <th>Date</th>
-                  <th>Status</th>
-                  <th>Received By</th>
-                  <th>Truck Released By</th>
+                  <td>${d.challanNo}</td>
+                  <td>${d.partyName}</td>
+                  <td>${d.siteName}</td>
+                  <td>${d.mixType || "-"}</td>
+                  <td>${d.vehicleNo}</td>
+                  <td>${Number(d.loadMT).toFixed(2)}</td>
+                  <td>${format(new Date(d.createdAt), "dd/MM/yyyy HH:mm")}</td>
+                  <td>${d.status}</td>
+                  <td>${d.arrivedByName || "-"}</td>
+                  <td>${d.leftByName || "-"}</td>
                 </tr>
-              </thead>
-              <tbody>
-                ${filteredDispatches.map(d => `
-                  <tr>
-                    <td>${d.challanNo}</td>
-                    <td>${d.partyName}</td>
-                    <td>${d.siteName}</td>
-                    <td>${d.mixType || "-"}</td>
-                    <td>${d.vehicleNo}</td>
-                    <td>${Number(d.loadMT).toFixed(2)}</td>
-                    <td>${format(new Date(d.createdAt), "dd/MM/yyyy HH:mm")}</td>
-                    <td>${d.status}</td>
-                    <td>${d.arrivedByName || "-"}</td>
-                    <td>${d.leftByName || "-"}</td>
-                  </tr>
-                `).join("")}
-              </tbody>
-            </table>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.print();
+              `).join("")}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+    
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "absolute";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    
+    const iframeDoc = iframe.contentWindow?.document;
+    if (iframeDoc) {
+      iframeDoc.open();
+      iframeDoc.write(printContent);
+      iframeDoc.close();
+      
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 1000);
     }
   }
 
