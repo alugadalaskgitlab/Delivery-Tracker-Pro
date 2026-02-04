@@ -765,7 +765,7 @@ export async function registerRoutes(
           orderedMT: orderedMT.toFixed(2),
           totalRequiredMT: totalDispatched.toFixed(2),
           receivedMT: receivedMT.toFixed(2),
-          balanceMT: (orderedMT - receivedMT).toFixed(2),
+          balanceMT: (orderedMT - totalDispatched).toFixed(2),
         });
       }
 
