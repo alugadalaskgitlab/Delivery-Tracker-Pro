@@ -85,6 +85,11 @@ Preferred communication style: Simple, everyday language.
 ### Key NPM Packages (additional)
 - `web-push`: Web Push protocol for server-side push notifications
 
+### PWA Icons
+- **Main app** (blue): `icon-192.png`, `icon-512.png` — dark navy (#2B3E5C) background
+- **Site pages** (green): `site-icon-192.png`, `site-icon-512.png` — forest green (#2E7D32) background
+- Dynamic manifest in `client/index.html` detects `/site/*` paths and swaps icons, theme color, and short_name ("DP Site") so Home Screen shortcuts are visually distinct
+
 ### Development Tools
 - Vite dev server with HMR
 - Replit-specific plugins for development banners and cartographer
