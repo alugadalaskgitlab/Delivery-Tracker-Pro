@@ -88,7 +88,8 @@ Preferred communication style: Simple, everyday language.
 ### PWA Icons
 - **Main app** (blue): `icon-192.png`, `icon-512.png` — dark navy (#2B3E5C) background
 - **Site pages** (green): `site-icon-192.png`, `site-icon-512.png` — forest green (#2E7D32) background
-- Dynamic manifest in `client/index.html` detects `/site/*` paths and swaps icons, theme color, and short_name ("DP Site") so Home Screen shortcuts are visually distinct
+- Dynamic manifest served via `GET /api/manifest?path=<current_path>` — returns correct icons, theme color, start_url, and short_name ("DP Site") based on whether the path is a site page
+- `client/index.html` script sets manifest link href to the server endpoint and swaps apple-touch-icon/theme-color for site pages
 
 ### Development Tools
 - Vite dev server with HMR

@@ -20,7 +20,7 @@
     <meta name="theme-color" id="theme-color" content="#2B3E5C" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="DispatchPro" />
+    <meta name="apple-mobile-web-app-title" id="apple-web-app-title" content="DispatchPro" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital,opsz,wght@0,8..60,400;1,8..60,400&family=Inter:ital,opsz,wght@0,14..32,300..900;1,14..32,300..900&display=swap" rel="stylesheet" />
@@ -28,34 +28,17 @@
       (function() {
         var path = window.location.pathname;
         var isSitePage = path && (path.indexOf('/site/') === 0 || path === '/site');
-        if (path && path !== '/') {
-          var iconPrefix = isSitePage ? '/site-icon' : '/icon';
-          var themeColor = isSitePage ? '#2E7D32' : '#2B3E5C';
-          var shortName = isSitePage ? 'DP Site' : 'DispatchPro';
-          var manifest = {
-            name: isSitePage ? 'DispatchPro Site' : 'DispatchPro - Highlane Constructions',
-            short_name: shortName,
-            description: 'Dispatch Management System for material and mix deliveries',
-            start_url: path,
-            scope: '/',
-            display: 'standalone',
-            background_color: themeColor,
-            theme_color: themeColor,
-            orientation: 'portrait-primary',
-            icons: [
-              { src: iconPrefix + '-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-              { src: iconPrefix + '-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
-            ]
-          };
-          var blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-          var link = document.getElementById('manifest-link');
-          if (link) link.href = URL.createObjectURL(blob);
-          if (isSitePage) {
-            var appleIcon = document.getElementById('apple-touch-icon');
-            if (appleIcon) appleIcon.href = '/site-icon-192.png';
-            var themeTag = document.getElementById('theme-color');
-            if (themeTag) themeTag.content = themeColor;
-          }
+        var manifestLink = document.getElementById('manifest-link');
+        if (manifestLink) {
+          manifestLink.href = '/api/manifest?path=' + encodeURIComponent(path);
+        }
+        if (isSitePage) {
+          var appleIcon = document.getElementById('apple-touch-icon');
+          if (appleIcon) appleIcon.href = '/site-icon-192.png';
+          var themeTag = document.getElementById('theme-color');
+          if (themeTag) themeTag.content = '#2E7D32';
+          var titleTag = document.getElementById('apple-web-app-title');
+          if (titleTag) titleTag.content = 'DP Site';
         }
       })();
     </script>

@@ -56,6 +56,42 @@ export async function registerRoutes(
     })
   );
 
+  app.get("/api/manifest", (req: Request, res: Response) => {
+    let path = (req.query.path as string) || "/";
+    if (!path.startsWith("/")) path = "/";
+    path = path.split("?")[0].split("#")[0];
+    const isSitePage = path.startsWith("/site/") || path === "/site";
+
+    const manifest = {
+      name: isSitePage ? "DispatchPro Site" : "DispatchPro - Highlane Constructions",
+      short_name: isSitePage ? "DP Site" : "DispatchPro",
+      description: "Dispatch Management System for material and mix deliveries",
+      start_url: path,
+      scope: "/",
+      display: "standalone",
+      background_color: isSitePage ? "#2E7D32" : "#2B3E5C",
+      theme_color: isSitePage ? "#2E7D32" : "#2B3E5C",
+      orientation: "portrait-primary",
+      icons: [
+        {
+          src: isSitePage ? "/site-icon-192.png" : "/icon-192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any maskable",
+        },
+        {
+          src: isSitePage ? "/site-icon-512.png" : "/icon-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any maskable",
+        },
+      ],
+    };
+
+    res.setHeader("Content-Type", "application/manifest+json");
+    res.json(manifest);
+  });
+
   app.post("/api/auth/pin-login", async (req: Request, res: Response) => {
     try {
       const { role, pin } = req.body;
