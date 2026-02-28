@@ -45,3 +45,10 @@ waitForPort = 5000
 [agent]
 stack = "MOCKUP_JS"
 mockupState = "FULLSTACK"
+
+[userenv]
+
+[userenv.shared]
+VAPID_PUBLIC_KEY = "BIL_ZXGcXMwnUWFXW3L_rGC94XNXH7W3xklar8D0XGkTQfirFAITDue60RcAg2qJ9H5NF2jczCYF6EpNg1b28oE"
+VAPID_PRIVATE_KEY = "Tae9qCOAi4OE3W_YbXisAa8E5SCxZVRK_0k_jdl3Cj4"
+VAPID_SUBJECT = "mailto:admin@dispatchpro.app"

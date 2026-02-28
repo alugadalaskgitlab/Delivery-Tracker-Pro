@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import CompanyHeader from "@/components/CompanyHeader";
+import { NotificationToggle } from "@/components/NotificationToggle";
 
 type PartyStatus = "ACTIVE" | "INACTIVE" | "CLOSED";
 
@@ -862,6 +863,7 @@ export default function AdminDashboard() {
           <div className="flex justify-between items-center">
             <CompanyHeader size="small" showTagline={false} className="flex-row gap-3" />
             <div className="flex items-center gap-2">
+              <NotificationToggle role="ADMIN" />
               <Button variant="outline" onClick={() => setShowSettingsDialog(true)} data-testid="button-settings">
                 <Settings className="h-4 w-4 mr-2" />
                 Settings

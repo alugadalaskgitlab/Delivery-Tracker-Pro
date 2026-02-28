@@ -6,6 +6,7 @@ import { storage } from "./storage";
 import { hashPassword, verifyPassword, requireAuth, requireAdmin, requirePlantOrAdmin, requireRole, getCurrentUser } from "./auth";
 import { insertPartySchema, insertDispatchSchema } from "@shared/schema";
 import { z } from "zod";
+import { getVapidPublicKey, broadcastNotification } from "./push-notifications";
 
 let io: SocketIOServer;
 
@@ -600,6 +601,13 @@ export async function registerRoutes(
         siteName: site.siteName,
       });
 
+      broadcastNotification({
+        title: "🚛 New Dispatch Created",
+        body: `${challanNo} - ${loadMT} MT to ${site.siteName}`,
+        tag: `dispatch-${dispatch.id}`,
+        data: { type: "new-dispatch", dispatchId: dispatch.id },
+      }).catch((err) => console.error("Push broadcast error:", err));
+
       return res.json(dispatch);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -684,6 +692,13 @@ export async function registerRoutes(
         receiverName: arrivedByName,
       });
 
+      broadcastNotification({
+        title: "📦 Dispatch Arrived",
+        body: `${dispatch.challanNo} arrived at ${dispatch.siteName} - Received by ${arrivedByName}`,
+        tag: `arrived-${dispatch.id}`,
+        data: { type: "arrived", dispatchId: dispatch.id },
+      }).catch((err) => console.error("Push broadcast error:", err));
+
       return res.json(updated);
     } catch (error) {
       console.error("Arrived error:", error);
@@ -728,6 +743,13 @@ export async function registerRoutes(
         newStatus: "LEFT",
         receiverName: leftByName,
       });
+
+      broadcastNotification({
+        title: "✅ Dispatch Left/Unloaded",
+        body: `${dispatch.challanNo} left ${dispatch.siteName} - ${leftByName}`,
+        tag: `left-${dispatch.id}`,
+        data: { type: "left", dispatchId: dispatch.id },
+      }).catch((err) => console.error("Push broadcast error:", err));
 
       return res.json(updated);
     } catch (error) {
@@ -919,6 +941,13 @@ export async function registerRoutes(
         receiverName: arrivedByName,
       });
 
+      broadcastNotification({
+        title: "📦 Dispatch Arrived",
+        body: `${dispatch.challanNo} arrived at ${dispatch.siteName} - Received by ${arrivedByName}`,
+        tag: `arrived-${dispatch.id}`,
+        data: { type: "arrived", dispatchId: dispatch.id },
+      }).catch((err) => console.error("Push broadcast error:", err));
+
       return res.json(updated);
     } catch (error) {
       console.error("Site arrived error:", error);
@@ -978,6 +1007,13 @@ export async function registerRoutes(
         receiverName: leftByName,
       });
 
+      broadcastNotification({
+        title: "✅ Dispatch Left/Unloaded",
+        body: `${dispatch.challanNo} left ${dispatch.siteName} - ${leftByName}`,
+        tag: `left-${dispatch.id}`,
+        data: { type: "left", dispatchId: dispatch.id },
+      }).catch((err) => console.error("Push broadcast error:", err));
+
       return res.json(updated);
     } catch (error) {
       console.error("Site left error:", error);
@@ -992,6 +1028,47 @@ export async function registerRoutes(
       return res.json(tokens);
     } catch (error) {
       console.error("Get tokens error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/push/vapid-public-key", (_req: Request, res: Response) => {
+    res.json({ key: getVapidPublicKey() });
+  });
+
+  const pushSubscribeSchema = z.object({
+    endpoint: z.string().url(),
+    p256dh: z.string().min(1),
+    auth: z.string().min(1),
+    role: z.string().nullable().optional(),
+    siteId: z.string().nullable().optional(),
+  });
+
+  app.post("/api/push/subscribe", async (req: Request, res: Response) => {
+    try {
+      const parsed = pushSubscribeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid subscription data" });
+      }
+      const { endpoint, p256dh, auth, role, siteId } = parsed.data;
+      await storage.savePushSubscription({ endpoint, p256dh, auth, role: role || null, siteId: siteId || null });
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Push subscribe error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/push/unsubscribe", async (req: Request, res: Response) => {
+    try {
+      const { endpoint } = req.body;
+      if (!endpoint || typeof endpoint !== "string") {
+        return res.status(400).json({ error: "Endpoint required" });
+      }
+      await storage.removePushSubscription(endpoint);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Push unsubscribe error:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });

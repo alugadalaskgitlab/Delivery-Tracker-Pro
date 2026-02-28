@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Loader2, PackageCheck, Truck, XCircle } from "lucide-react";
 import CompanyHeader from "@/components/CompanyHeader";
+import { NotificationToggle } from "@/components/NotificationToggle";
 import { io } from "socket.io-client";
 import { playNewDispatchSound, initializeAudioContext } from "@/lib/sounds";
 import {
@@ -213,7 +214,10 @@ export default function SiteAccess() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
         <div className="container mx-auto px-4 py-3">
-          <CompanyHeader size="small" showTagline={false} className="mb-2" />
+          <div className="flex justify-between items-center mb-2">
+            <CompanyHeader size="small" showTagline={false} />
+            <NotificationToggle role="SITE" siteId={validation.siteId} />
+          </div>
           <div className="text-center">
             <span className="text-sm font-medium text-gray-600">Site Dispatch Tracking</span>
             <p className="text-sm text-gray-500">

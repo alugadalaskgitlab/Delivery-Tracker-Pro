@@ -13,6 +13,8 @@ import {
   type InsertChallanSequence,
   type AppSetting,
   type InsertAppSetting,
+  type PushSubscription,
+  type InsertPushSubscription,
   users,
   parties,
   sites,
@@ -22,6 +24,7 @@ import {
   partyCodeSequence,
   siteSequences,
   appSettings,
+  pushSubscriptions,
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -71,6 +74,10 @@ export interface IStorage {
   
   getSetting(key: string): Promise<string | undefined>;
   setSetting(key: string, value: string): Promise<void>;
+
+  savePushSubscription(sub: InsertPushSubscription): Promise<PushSubscription>;
+  removePushSubscription(endpoint: string): Promise<boolean>;
+  getAllPushSubscriptions(): Promise<PushSubscription[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -293,6 +300,28 @@ export class DbStorage implements IStorage {
     } else {
       await db.insert(appSettings).values({ key, value });
     }
+  }
+
+  async savePushSubscription(sub: InsertPushSubscription): Promise<PushSubscription> {
+    const existing = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, sub.endpoint)).limit(1);
+    if (existing.length > 0) {
+      const result = await db.update(pushSubscriptions)
+        .set({ p256dh: sub.p256dh, auth: sub.auth, role: sub.role, siteId: sub.siteId })
+        .where(eq(pushSubscriptions.endpoint, sub.endpoint))
+        .returning();
+      return result[0];
+    }
+    const result = await db.insert(pushSubscriptions).values(sub).returning();
+    return result[0];
+  }
+
+  async removePushSubscription(endpoint: string): Promise<boolean> {
+    const result = await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)).returning();
+    return result.length > 0;
+  }
+
+  async getAllPushSubscriptions(): Promise<PushSubscription[]> {
+    return await db.select().from(pushSubscriptions);
   }
 }
 

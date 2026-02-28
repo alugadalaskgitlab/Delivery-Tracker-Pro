@@ -45,6 +45,16 @@ Preferred communication style: Simple, everyday language.
 - **Site Tokens**: Access tokens for site users linked to specific parties
 - **Party Sequences**: Track sequential challan numbering per party
 - **App Settings**: Key-value store for system configuration (PINs, etc.)
+- **Push Subscriptions**: Web Push notification subscriptions per device/user
+
+### Push Notifications (Web Push)
+- **Service Worker**: `client/public/sw.js` handles push events and displays notifications
+- **Server Module**: `server/push-notifications.ts` sends push via `web-push` library with VAPID keys
+- **Frontend Utility**: `client/src/lib/push-notifications.ts` manages subscription lifecycle
+- **UI Component**: `client/src/components/NotificationToggle.tsx` - bell icon on all pages
+- **Events**: Notifications sent on dispatch creation, site arrived, and site left/unloaded
+- **iOS**: Users must add app to Home Screen (PWA) for background push support
+- **Android**: Works in browser and as PWA
 
 ### API Structure
 - RESTful endpoints under `/api/` prefix
@@ -68,6 +78,12 @@ Preferred communication style: Simple, everyday language.
 ### Environment Variables Required
 - `DATABASE_URL`: PostgreSQL connection string
 - `SESSION_SECRET`: Secret for session encryption (defaults to dev value)
+- `VAPID_PUBLIC_KEY`: Web Push VAPID public key
+- `VAPID_PRIVATE_KEY`: Web Push VAPID private key
+- `VAPID_SUBJECT`: Web Push VAPID subject (mailto: URI)
+
+### Key NPM Packages (additional)
+- `web-push`: Web Push protocol for server-side push notifications
 
 ### Development Tools
 - Vite dev server with HMR

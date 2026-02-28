@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Loader2, Home } from "lucide-react";
 import CompanyHeader from "@/components/CompanyHeader";
+import { NotificationToggle } from "@/components/NotificationToggle";
 import { playStatusUpdateSound, playNewDispatchSound, initializeAudioContext } from "@/lib/sounds";
 
 type Party = {
@@ -271,6 +272,7 @@ export default function PlantDispatch() {
           <div className="flex justify-between items-center">
             <CompanyHeader size="small" showTagline={false} className="flex-row gap-3" />
             <div className="flex items-center gap-4">
+              <NotificationToggle role="PLANT" />
               <Button variant="outline" onClick={handleLogout} data-testid="button-home" className="gap-2">
                 <Home className="h-4 w-4" />
                 Home
