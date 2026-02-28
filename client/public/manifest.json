@@ -2,12 +2,12 @@
   "name": "DispatchPro - Highlane Constructions",
   "short_name": "DispatchPro",
   "description": "Dispatch Management System for material and mix deliveries",
-  "start_url": "/",
+  "start_url": ".",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#2B3E5C",
   "theme_color": "#2B3E5C",
   "orientation": "portrait-primary",
-  "id": "/",
   "icons": [
     {
       "src": "/icon-192.png",

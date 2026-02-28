@@ -618,6 +618,51 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/dispatches/:id", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const dispatchId = Array.isArray(id) ? id[0] : id;
+
+      const editSchema = z.object({
+        ownerPin: z.string().min(1, "Owner PIN required"),
+        vehicleNo: z.string().min(1, "Vehicle number is required").transform(v => v.toUpperCase()),
+        loadMT: z.string().min(1, "Load is required").refine(v => !isNaN(Number(v)) && Number(v) > 0, "Load must be a positive number"),
+        notes: z.string().optional().default(""),
+      });
+
+      const parsed = editSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid input" });
+      }
+
+      const { ownerPin, vehicleNo, loadMT, notes } = parsed.data;
+
+      const storedOwnerPin = await storage.getSetting("owner_pin");
+      if (!storedOwnerPin) {
+        return res.status(500).json({ error: "Owner PIN not configured. Please set it in Settings." });
+      }
+
+      if (ownerPin !== storedOwnerPin) {
+        return res.status(401).json({ error: "Invalid Owner PIN" });
+      }
+
+      const dispatch = await storage.getDispatch(dispatchId);
+      if (!dispatch) {
+        return res.status(404).json({ error: "Dispatch not found" });
+      }
+
+      const updated = await storage.updateDispatch(dispatchId, {
+        vehicleNo,
+        loadMT: String(Number(loadMT)),
+        notes: notes ? notes.toUpperCase() : null,
+      });
+      return res.json(updated);
+    } catch (error) {
+      console.error("Edit dispatch error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.delete("/api/dispatches/:id", requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;

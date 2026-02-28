@@ -17,6 +17,7 @@ import {
   Search,
   Settings,
   Trash2,
+  Truck,
   Users,
   X,
 } from "lucide-react";
@@ -135,6 +136,9 @@ export default function AdminDashboard() {
   const [showOwnerPinDialog, setShowOwnerPinDialog] = useState(false);
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ type: "party" | "dispatch"; id: string } | null>(null);
   const [pendingStatusAction, setPendingStatusAction] = useState<{ partyId: string; newStatus: PartyStatus } | null>(null);
+  const [editingDispatch, setEditingDispatch] = useState<Dispatch | null>(null);
+  const [editDispatchForm, setEditDispatchForm] = useState({ vehicleNo: "", loadMT: "", notes: "" });
+  const [editDispatchOwnerPin, setEditDispatchOwnerPin] = useState("");
 
   useEffect(() => {
     initializeAudioContext();
@@ -300,6 +304,30 @@ export default function AdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
       toast({ title: "Success", description: "Dispatch deleted successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const editDispatchMutation = useMutation({
+    mutationFn: async ({ id, ownerPin, vehicleNo, loadMT, notes }: { id: string; ownerPin: string; vehicleNo: string; loadMT: string; notes: string }) => {
+      const res = await fetch(`/api/dispatches/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerPin, vehicleNo, loadMT, notes }),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to edit dispatch");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dispatches"] });
+      setEditingDispatch(null);
+      setEditDispatchOwnerPin("");
+      toast({ title: "Success", description: "Dispatch updated successfully" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -624,6 +652,27 @@ export default function AdminDashboard() {
     setShowOwnerPinDialog(true);
   }
 
+  function openEditDispatchDialog(dispatch: Dispatch) {
+    setEditingDispatch(dispatch);
+    setEditDispatchForm({
+      vehicleNo: dispatch.vehicleNo,
+      loadMT: dispatch.loadMT,
+      notes: dispatch.notes || "",
+    });
+    setEditDispatchOwnerPin("");
+  }
+
+  function handleEditDispatchSubmit() {
+    if (!editingDispatch || !editDispatchOwnerPin) return;
+    editDispatchMutation.mutate({
+      id: editingDispatch.id,
+      ownerPin: editDispatchOwnerPin,
+      vehicleNo: editDispatchForm.vehicleNo,
+      loadMT: editDispatchForm.loadMT,
+      notes: editDispatchForm.notes,
+    });
+  }
+
   function copyLink(accessId: string) {
     const url = `${window.location.origin}/site/${accessId}`;
     navigator.clipboard.writeText(url).then(() => {
@@ -914,6 +963,10 @@ export default function AdminDashboard() {
               <Users className="h-4 w-4 mr-2" />
               Parties
             </TabsTrigger>
+            <TabsTrigger value="dispatches" data-testid="tab-dispatches">
+              <Truck className="h-4 w-4 mr-2" />
+              Dispatches
+            </TabsTrigger>
             <TabsTrigger value="reports" data-testid="tab-reports">
               <FileText className="h-4 w-4 mr-2" />
               Reports
@@ -1102,6 +1155,92 @@ export default function AdminDashboard() {
                     )}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="dispatches" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Dispatches</CardTitle>
+                <CardDescription>
+                  {dispatches.length} total dispatches — Edit or delete entries with Owner PIN
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Challan No</TableHead>
+                        <TableHead>Party</TableHead>
+                        <TableHead>Site</TableHead>
+                        <TableHead>Vehicle</TableHead>
+                        <TableHead>Load (MT)</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Notes</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dispatches.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center text-gray-500 py-8">
+                            No dispatches yet
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        dispatches.map((dispatch) => (
+                          <TableRow key={dispatch.id} data-testid={`row-dispatch-main-${dispatch.id}`}>
+                            <TableCell className="font-medium">{dispatch.challanNo}</TableCell>
+                            <TableCell>{dispatch.partyName}</TableCell>
+                            <TableCell>{dispatch.siteName}</TableCell>
+                            <TableCell>{dispatch.vehicleNo}</TableCell>
+                            <TableCell>{Number(dispatch.loadMT).toFixed(2)}</TableCell>
+                            <TableCell>{format(new Date(dispatch.createdAt), "dd/MM/yyyy HH:mm")}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  dispatch.status === "LEFT"
+                                    ? "default"
+                                    : dispatch.status === "ARRIVED"
+                                    ? "secondary"
+                                    : "outline"
+                                }
+                              >
+                                {dispatch.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="max-w-[120px] truncate">{dispatch.notes || "-"}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openEditDispatchDialog(dispatch)}
+                                  title="Edit dispatch"
+                                  data-testid={`button-edit-dispatch-main-${dispatch.id}`}
+                                >
+                                  <Edit2 className="h-4 w-4 text-blue-500" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => requestDeleteDispatch(dispatch)}
+                                  title="Delete dispatch"
+                                  data-testid={`button-delete-dispatch-main-${dispatch.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-500" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1406,14 +1545,26 @@ export default function AdminDashboard() {
                             <TableCell>{dispatch.arrivedByName || "-"}</TableCell>
                             <TableCell>{dispatch.leftByName || "-"}</TableCell>
                             <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => requestDeleteDispatch(dispatch)}
-                                data-testid={`button-delete-dispatch-${dispatch.id}`}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openEditDispatchDialog(dispatch)}
+                                  title="Edit dispatch"
+                                  data-testid={`button-edit-dispatch-${dispatch.id}`}
+                                >
+                                  <Edit2 className="h-4 w-4 text-blue-500" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => requestDeleteDispatch(dispatch)}
+                                  title="Delete dispatch"
+                                  data-testid={`button-delete-dispatch-${dispatch.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-500" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -1884,6 +2035,86 @@ export default function AdminDashboard() {
               data-testid="button-save-site-edit"
             >
               Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingDispatch} onOpenChange={(open) => { if (!open) { setEditingDispatch(null); setEditDispatchOwnerPin(""); } }}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-edit-dispatch">
+          <DialogHeader>
+            <DialogTitle>Edit Dispatch</DialogTitle>
+            <DialogDescription>
+              Edit dispatch {editingDispatch?.challanNo}. Owner PIN required to save.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Challan No</Label>
+              <Input value={editingDispatch?.challanNo || ""} disabled className="bg-gray-50" />
+            </div>
+            <div className="space-y-2">
+              <Label>Party / Site</Label>
+              <Input value={`${editingDispatch?.partyName || ""} — ${editingDispatch?.siteName || ""}`} disabled className="bg-gray-50" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editVehicleNo">Vehicle No *</Label>
+              <Input
+                id="editVehicleNo"
+                value={editDispatchForm.vehicleNo}
+                onChange={(e) => setEditDispatchForm({ ...editDispatchForm, vehicleNo: e.target.value.toUpperCase() })}
+                placeholder="Enter vehicle number"
+                style={{ textTransform: "uppercase" }}
+                data-testid="input-edit-dispatch-vehicle"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editLoadMT">Load (MT) *</Label>
+              <Input
+                id="editLoadMT"
+                type="number"
+                step="0.01"
+                value={editDispatchForm.loadMT}
+                onChange={(e) => setEditDispatchForm({ ...editDispatchForm, loadMT: e.target.value })}
+                placeholder="Enter load in MT"
+                data-testid="input-edit-dispatch-load"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editNotes">Notes</Label>
+              <Input
+                id="editNotes"
+                value={editDispatchForm.notes}
+                onChange={(e) => setEditDispatchForm({ ...editDispatchForm, notes: e.target.value.toUpperCase() })}
+                placeholder="Optional notes"
+                style={{ textTransform: "uppercase" }}
+                data-testid="input-edit-dispatch-notes"
+              />
+            </div>
+            <Separator />
+            <div className="space-y-2">
+              <Label htmlFor="editDispatchOwnerPin">Owner PIN *</Label>
+              <Input
+                id="editDispatchOwnerPin"
+                type="password"
+                value={editDispatchOwnerPin}
+                onChange={(e) => setEditDispatchOwnerPin(e.target.value)}
+                placeholder="Enter Owner PIN to confirm"
+                onKeyDown={(e) => e.key === "Enter" && handleEditDispatchSubmit()}
+                data-testid="input-edit-dispatch-owner-pin"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditingDispatch(null); setEditDispatchOwnerPin(""); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEditDispatchSubmit}
+              disabled={!editDispatchForm.vehicleNo.trim() || !editDispatchForm.loadMT || !editDispatchOwnerPin || editDispatchMutation.isPending}
+              data-testid="button-save-dispatch-edit"
+            >
+              {editDispatchMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
