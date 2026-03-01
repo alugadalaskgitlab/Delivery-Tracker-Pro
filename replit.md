@@ -82,6 +82,15 @@ Preferred communication style: Simple, everyday language.
 - `VAPID_PRIVATE_KEY`: Web Push VAPID private key
 - `VAPID_SUBJECT`: Web Push VAPID subject (mailto: URI)
 
+### Push Notifications (Web Push)
+- **Service Worker**: `client/public/sw.js` handles push events and displays notifications
+- **Server Module**: `server/push-notifications.ts` sends push via `web-push` library with VAPID keys
+- **Frontend Utility**: `client/src/lib/push-notifications.ts` manages subscription lifecycle
+- **UI Component**: `client/src/components/NotificationToggle.tsx` - bell icon on all pages
+- **Events**: Notifications sent on dispatch creation, site arrived, and site left/unloaded
+- **iOS**: Users must add app to Home Screen (PWA) for background push support
+- **Android**: Works in browser and as PWA
+
 ### Key NPM Packages (additional)
 - `web-push`: Web Push protocol for server-side push notifications
 

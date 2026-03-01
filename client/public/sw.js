@@ -1,13 +1,22 @@
+const SW_VERSION = "1.1.0";
+
 self.addEventListener("install", (event) => {
+  console.log("[SW] Installing version:", SW_VERSION);
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
+  console.log("[SW] Activated version:", SW_VERSION);
   event.waitUntil(self.clients.claim());
 });
 
 self.addEventListener("push", (event) => {
-  if (!event.data) return;
+  console.log("[SW] Push event received");
+
+  if (!event.data) {
+    console.log("[SW] Push event has no data");
+    return;
+  }
 
   let payload;
   try {
@@ -15,6 +24,8 @@ self.addEventListener("push", (event) => {
   } catch (e) {
     payload = { title: "DispatchPro", body: event.data.text() };
   }
+
+  console.log("[SW] Notification payload:", payload.title, payload.body);
 
   const options = {
     body: payload.body || "",
@@ -31,7 +42,15 @@ self.addEventListener("push", (event) => {
 });
 
 self.addEventListener("notificationclick", (event) => {
+  console.log("[SW] Notification clicked:", event.notification.tag);
   event.notification.close();
+
+  const data = event.notification.data || {};
+  let targetUrl = "/";
+
+  if (data.type === "new-dispatch" || data.type === "arrived" || data.type === "left") {
+    targetUrl = "/";
+  }
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
@@ -40,7 +59,7 @@ self.addEventListener("notificationclick", (event) => {
           return client.focus();
         }
       }
-      return self.clients.openWindow("/");
+      return self.clients.openWindow(targetUrl);
     })
   );
 });

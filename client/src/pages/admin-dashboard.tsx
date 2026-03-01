@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { io } from "socket.io-client";
 import {
+  Bell,
   CheckCircle2,
   Copy,
   Download,
@@ -1723,6 +1724,35 @@ export default function AdminDashboard() {
                 data-testid="input-owner-pin"
               />
             </div>
+          </div>
+          <Separator />
+          <div className="space-y-2">
+            <Label className="font-semibold">Push Notifications</Label>
+            <p className="text-xs text-muted-foreground">Send a test notification to all subscribed devices</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/push/test", { method: "POST" });
+                  const data = await res.json();
+                  if (res.ok) {
+                    toast({
+                      title: "Test sent",
+                      description: `Notification sent to ${data.subscriberCount} device(s). Check your notifications.`,
+                    });
+                  } else {
+                    toast({ title: "Error", description: data.error || "Failed to send", variant: "destructive" });
+                  }
+                } catch {
+                  toast({ title: "Error", description: "Failed to send test notification", variant: "destructive" });
+                }
+              }}
+              data-testid="button-test-push"
+            >
+              <Bell className="h-4 w-4 mr-2" />
+              Send Test Notification
+            </Button>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowSettingsDialog(false)}>

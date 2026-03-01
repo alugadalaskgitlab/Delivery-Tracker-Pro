@@ -1154,5 +1154,21 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/push/test", requireAdmin, async (_req: Request, res: Response) => {
+    try {
+      await broadcastNotification({
+        title: "🔔 Test Notification",
+        body: "Push notifications are working! You will receive alerts for dispatch events.",
+        tag: "test-notification",
+        data: { type: "test" },
+      });
+      const subscriptions = await storage.getAllPushSubscriptions();
+      return res.json({ success: true, subscriberCount: subscriptions.length });
+    } catch (error) {
+      console.error("Test push error:", error);
+      return res.status(500).json({ error: "Failed to send test notification" });
+    }
+  });
+
   return httpServer;
 }

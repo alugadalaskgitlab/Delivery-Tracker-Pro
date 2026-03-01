@@ -2,15 +2,21 @@ let swRegistration: ServiceWorkerRegistration | null = null;
 
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) {
-    console.warn("Service workers not supported");
+    console.warn("[Push] Service workers not supported");
     return null;
   }
 
   try {
-    swRegistration = await navigator.serviceWorker.register("/sw.js");
+    swRegistration = await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
+    console.log("[Push] Service worker registered, scope:", swRegistration.scope);
+
+    swRegistration.addEventListener("updatefound", () => {
+      console.log("[Push] New service worker version found, updating...");
+    });
+
     return swRegistration;
   } catch (error) {
-    console.error("Service worker registration failed:", error);
+    console.error("[Push] Service worker registration failed:", error);
     return null;
   }
 }
@@ -42,37 +48,87 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 export async function subscribeToPush(role?: string, siteId?: string): Promise<boolean> {
   try {
-    const permission = await requestNotificationPermission();
-    if (permission !== "granted") return false;
+    console.log("[Push] Starting subscription flow...");
 
-    const reg = swRegistration || (await registerServiceWorker());
-    if (!reg) return false;
+    const permission = await requestNotificationPermission();
+    console.log("[Push] Permission result:", permission);
+    if (permission !== "granted") {
+      console.warn("[Push] Notification permission not granted:", permission);
+      return false;
+    }
+
+    let reg = swRegistration;
+    if (!reg) {
+      reg = await registerServiceWorker();
+    }
+    if (!reg) {
+      console.error("[Push] No service worker registration available");
+      return false;
+    }
+
+    await navigator.serviceWorker.ready;
+    console.log("[Push] Service worker is ready");
 
     const vapidRes = await fetch("/api/push/vapid-public-key");
+    if (!vapidRes.ok) {
+      console.error("[Push] Failed to fetch VAPID key:", vapidRes.status);
+      return false;
+    }
     const { key } = await vapidRes.json();
-    if (!key) return false;
+    if (!key) {
+      console.error("[Push] VAPID public key is empty - server may not have VAPID keys configured");
+      return false;
+    }
+    console.log("[Push] Got VAPID public key:", key.substring(0, 20) + "...");
+
+    const existingSub = await reg.pushManager.getSubscription();
+    if (existingSub) {
+      console.log("[Push] Found existing subscription, removing old one first...");
+      try {
+        await fetch("/api/push/unsubscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: existingSub.endpoint }),
+        });
+      } catch (e) {
+        console.warn("[Push] Failed to remove old subscription from server:", e);
+      }
+      await existingSub.unsubscribe();
+    }
 
     const subscription = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(key),
     });
+    console.log("[Push] Browser push subscription created");
 
     const subJson = subscription.toJSON();
+    if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) {
+      console.error("[Push] Subscription is missing required fields");
+      return false;
+    }
+
     const response = await fetch("/api/push/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         endpoint: subJson.endpoint,
-        p256dh: subJson.keys?.p256dh,
-        auth: subJson.keys?.auth,
+        p256dh: subJson.keys.p256dh,
+        auth: subJson.keys.auth,
         role: role || null,
         siteId: siteId || null,
       }),
     });
 
-    return response.ok;
+    if (!response.ok) {
+      console.error("[Push] Server rejected subscription:", response.status);
+      return false;
+    }
+
+    console.log("[Push] Subscription saved to server successfully");
+    return true;
   } catch (error) {
-    console.error("Push subscription failed:", error);
+    console.error("[Push] Subscription failed:", error);
     return false;
   }
 }
@@ -90,9 +146,10 @@ export async function unsubscribeFromPush(): Promise<boolean> {
     });
 
     await subscription.unsubscribe();
+    console.log("[Push] Unsubscribed successfully");
     return true;
   } catch (error) {
-    console.error("Push unsubscribe failed:", error);
+    console.error("[Push] Unsubscribe failed:", error);
     return false;
   }
 }

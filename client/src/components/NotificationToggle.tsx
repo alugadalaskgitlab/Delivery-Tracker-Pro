@@ -49,6 +49,8 @@ export function NotificationToggle({ role, siteId }: NotificationToggleProps) {
         if (success) {
           setSubscribed(false);
           toast({ title: "Notifications disabled" });
+        } else {
+          toast({ title: "Error", description: "Failed to disable notifications", variant: "destructive" });
         }
       } else {
         const success = await subscribeToPush(role, siteId);
@@ -62,7 +64,13 @@ export function NotificationToggle({ role, siteId }: NotificationToggleProps) {
           if (perm === "denied") {
             toast({
               title: "Notifications blocked",
-              description: "Please enable notifications in your browser settings",
+              description: "Please enable notifications in your browser/device settings, then try again",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Could not enable notifications",
+              description: "Please check your browser supports push notifications and try again",
               variant: "destructive",
             });
           }
