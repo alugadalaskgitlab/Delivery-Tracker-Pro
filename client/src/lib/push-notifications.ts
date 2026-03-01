@@ -25,6 +25,19 @@ export function isNotificationSupported(): boolean {
   return "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
 }
 
+export function isIOSDevice(): boolean {
+  const ua = navigator.userAgent;
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+export function isStandalonePWA(): boolean {
+  return window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true;
+}
+
+export function isIOSNeedsPWA(): boolean {
+  return isIOSDevice() && !isStandalonePWA() && !isNotificationSupported();
+}
+
 export function getNotificationPermission(): NotificationPermission {
   if (!("Notification" in window)) return "denied";
   return Notification.permission;

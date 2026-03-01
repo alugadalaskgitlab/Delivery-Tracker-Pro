@@ -3,6 +3,7 @@ import { Bell, BellOff, BellRing } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   isNotificationSupported,
+  isIOSNeedsPWA,
   getNotificationPermission,
   subscribeToPush,
   unsubscribeFromPush,
@@ -37,11 +38,21 @@ export function NotificationToggle({ role, siteId }: NotificationToggleProps) {
     checkStatus();
   }, []);
 
-  if (!isNotificationSupported()) {
+  const iosNeedsPWA = isIOSNeedsPWA();
+
+  if (!isNotificationSupported() && !iosNeedsPWA) {
     return null;
   }
 
   async function handleToggle() {
+    if (iosNeedsPWA) {
+      toast({
+        title: "Add to Home Screen",
+        description: "To receive notifications on iPhone, tap the Share button (⬆) in Safari, then 'Add to Home Screen'. Open the app from there.",
+        duration: 8000,
+      });
+      return;
+    }
     setLoading(true);
     try {
       if (subscribed) {

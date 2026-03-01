@@ -48,12 +48,13 @@ Preferred communication style: Simple, everyday language.
 - **Push Subscriptions**: Web Push notification subscriptions per device/user
 
 ### Push Notifications (Web Push)
-- **Service Worker**: `client/public/sw.js` handles push events and displays notifications
-- **Server Module**: `server/push-notifications.ts` sends push via `web-push` library with VAPID keys
-- **Frontend Utility**: `client/src/lib/push-notifications.ts` manages subscription lifecycle
-- **UI Component**: `client/src/components/NotificationToggle.tsx` - bell icon on all pages
+- **Service Worker**: `client/public/sw.js` handles push events, notifications, SPA navigation in standalone PWA mode
+- **Server Module**: `server/push-notifications.ts` — `broadcastNotification()` for all, `sendSiteNotification(siteId)` for targeted
+- **Frontend Utility**: `client/src/lib/push-notifications.ts` manages subscription lifecycle + iOS detection helpers
+- **UI Component**: `client/src/components/NotificationToggle.tsx` - bell icon on all pages; iOS Safari shows "Add to Home Screen" guidance
+- **Targeting**: Site users only get notifications for their site; Admin/Plant get all notifications
 - **Events**: Notifications sent on dispatch creation, site arrived, and site left/unloaded
-- **iOS**: Users must add app to Home Screen (PWA) for background push support
+- **iOS**: Must add to Home Screen (PWA) for push; bell icon guides users in Safari
 - **Android**: Works in browser and as PWA
 
 ### API Structure
@@ -83,12 +84,13 @@ Preferred communication style: Simple, everyday language.
 - `VAPID_SUBJECT`: Web Push VAPID subject (mailto: URI)
 
 ### Push Notifications (Web Push)
-- **Service Worker**: `client/public/sw.js` handles push events and displays notifications
-- **Server Module**: `server/push-notifications.ts` sends push via `web-push` library with VAPID keys
-- **Frontend Utility**: `client/src/lib/push-notifications.ts` manages subscription lifecycle
-- **UI Component**: `client/src/components/NotificationToggle.tsx` - bell icon on all pages
+- **Service Worker**: `client/public/sw.js` handles push events, notifications, SPA navigation in standalone PWA mode
+- **Server Module**: `server/push-notifications.ts` — `broadcastNotification()` for all, `sendSiteNotification(siteId)` for targeted
+- **Frontend Utility**: `client/src/lib/push-notifications.ts` manages subscription lifecycle + iOS detection helpers
+- **UI Component**: `client/src/components/NotificationToggle.tsx` - bell icon on all pages; iOS Safari shows "Add to Home Screen" guidance
+- **Targeting**: Site users only get notifications for their site; Admin/Plant get all notifications
 - **Events**: Notifications sent on dispatch creation, site arrived, and site left/unloaded
-- **iOS**: Users must add app to Home Screen (PWA) for background push support
+- **iOS**: Must add to Home Screen (PWA) for push; bell icon guides users in Safari
 - **Android**: Works in browser and as PWA
 
 ### Key NPM Packages (additional)

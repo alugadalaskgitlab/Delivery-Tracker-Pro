@@ -1,4 +1,4 @@
-const SW_VERSION = "1.1.0";
+const SW_VERSION = "1.3.0";
 
 self.addEventListener("install", (event) => {
   console.log("[SW] Installing version:", SW_VERSION);
@@ -8,6 +8,16 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   console.log("[SW] Activated version:", SW_VERSION);
   event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return caches.match("/") || new Response("Offline", { status: 503 });
+      })
+    );
+  }
 });
 
 self.addEventListener("push", (event) => {
@@ -46,11 +56,7 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
   const data = event.notification.data || {};
-  let targetUrl = "/";
-
-  if (data.type === "new-dispatch" || data.type === "arrived" || data.type === "left") {
-    targetUrl = "/";
-  }
+  const targetUrl = data.url || "/";
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {

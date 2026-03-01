@@ -641,7 +641,7 @@ export async function registerRoutes(
         title: "🚛 New Dispatch Created",
         body: `${challanNo} - ${loadMT} MT to ${site.siteName}`,
         tag: `dispatch-${dispatch.id}`,
-        data: { type: "new-dispatch", dispatchId: dispatch.id },
+        data: { type: "new-dispatch", dispatchId: dispatch.id, url: `/site/${site.accessId}` },
       }).catch((err) => console.error("Push notification error:", err));
 
       return res.json(dispatch);
@@ -773,11 +773,12 @@ export async function registerRoutes(
         receiverName: arrivedByName,
       });
 
+      const arrSite = await storage.getSite(dispatch.siteId);
       sendSiteNotification(dispatch.siteId, {
         title: "📦 Dispatch Arrived",
         body: `${dispatch.challanNo} arrived at ${dispatch.siteName} - Received by ${arrivedByName}`,
         tag: `arrived-${dispatch.id}`,
-        data: { type: "arrived", dispatchId: dispatch.id },
+        data: { type: "arrived", dispatchId: dispatch.id, url: arrSite ? `/site/${arrSite.accessId}` : "/" },
       }).catch((err) => console.error("Push notification error:", err));
 
       return res.json(updated);
@@ -825,11 +826,12 @@ export async function registerRoutes(
         receiverName: leftByName,
       });
 
+      const leftSite = await storage.getSite(dispatch.siteId);
       sendSiteNotification(dispatch.siteId, {
         title: "✅ Dispatch Left/Unloaded",
         body: `${dispatch.challanNo} left ${dispatch.siteName} - ${leftByName}`,
         tag: `left-${dispatch.id}`,
-        data: { type: "left", dispatchId: dispatch.id },
+        data: { type: "left", dispatchId: dispatch.id, url: leftSite ? `/site/${leftSite.accessId}` : "/" },
       }).catch((err) => console.error("Push notification error:", err));
 
       return res.json(updated);
@@ -1022,11 +1024,12 @@ export async function registerRoutes(
         receiverName: arrivedByName,
       });
 
+      const arrSite = await storage.getSite(dispatch.siteId);
       sendSiteNotification(dispatch.siteId, {
         title: "📦 Dispatch Arrived",
         body: `${dispatch.challanNo} arrived at ${dispatch.siteName} - Received by ${arrivedByName}`,
         tag: `arrived-${dispatch.id}`,
-        data: { type: "arrived", dispatchId: dispatch.id },
+        data: { type: "arrived", dispatchId: dispatch.id, url: arrSite ? `/site/${arrSite.accessId}` : "/" },
       }).catch((err) => console.error("Push notification error:", err));
 
       return res.json(updated);
@@ -1088,11 +1091,12 @@ export async function registerRoutes(
         receiverName: leftByName,
       });
 
+      const leftSite = await storage.getSite(dispatch.siteId);
       sendSiteNotification(dispatch.siteId, {
         title: "✅ Dispatch Left/Unloaded",
         body: `${dispatch.challanNo} left ${dispatch.siteName} - ${leftByName}`,
         tag: `left-${dispatch.id}`,
-        data: { type: "left", dispatchId: dispatch.id },
+        data: { type: "left", dispatchId: dispatch.id, url: leftSite ? `/site/${leftSite.accessId}` : "/" },
       }).catch((err) => console.error("Push notification error:", err));
 
       return res.json(updated);
