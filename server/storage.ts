@@ -27,7 +27,7 @@ import {
   pushSubscriptions,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, ne, and, or, desc, sql, isNull } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -78,6 +78,8 @@ export interface IStorage {
   savePushSubscription(sub: InsertPushSubscription): Promise<PushSubscription>;
   removePushSubscription(endpoint: string): Promise<boolean>;
   getAllPushSubscriptions(): Promise<PushSubscription[]>;
+  getPushSubscriptionsBySiteId(siteId: string): Promise<PushSubscription[]>;
+  getNonSitePushSubscriptions(): Promise<PushSubscription[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -322,6 +324,16 @@ export class DbStorage implements IStorage {
 
   async getAllPushSubscriptions(): Promise<PushSubscription[]> {
     return await db.select().from(pushSubscriptions);
+  }
+
+  async getPushSubscriptionsBySiteId(siteId: string): Promise<PushSubscription[]> {
+    return await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.siteId, siteId));
+  }
+
+  async getNonSitePushSubscriptions(): Promise<PushSubscription[]> {
+    return await db.select().from(pushSubscriptions).where(
+      or(ne(pushSubscriptions.role, "SITE"), isNull(pushSubscriptions.role))
+    );
   }
 }
 

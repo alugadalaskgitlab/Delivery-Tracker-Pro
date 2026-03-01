@@ -79,3 +79,42 @@ export async function broadcastNotification(payload: NotificationPayload): Promi
   const failed = results.length - succeeded;
   console.log(`[Push] Broadcast complete: ${succeeded} succeeded, ${failed} failed out of ${results.length} total`);
 }
+
+export async function sendSiteNotification(siteId: string, payload: NotificationPayload): Promise<void> {
+  if (!vapidPublicKey || !vapidPrivateKey) {
+    console.warn("[Push] VAPID keys not configured, skipping push notifications");
+    return;
+  }
+
+  const [siteSubscriptions, adminPlantSubscriptions] = await Promise.all([
+    storage.getPushSubscriptionsBySiteId(siteId),
+    storage.getNonSitePushSubscriptions(),
+  ]);
+
+  const seen = new Set<string>();
+  const allSubscriptions = [...adminPlantSubscriptions, ...siteSubscriptions].filter((sub) => {
+    if (seen.has(sub.endpoint)) return false;
+    seen.add(sub.endpoint);
+    return true;
+  });
+
+  console.log(`[Push] Site notification "${payload.title}" for site ${siteId}: ${siteSubscriptions.length} site sub(s) + ${adminPlantSubscriptions.length} admin/plant sub(s) = ${allSubscriptions.length} unique`);
+
+  if (allSubscriptions.length === 0) {
+    console.log("[Push] No subscriptions found for this site notification");
+    return;
+  }
+
+  const results = await Promise.allSettled(
+    allSubscriptions.map((sub) =>
+      sendPushToSubscription(
+        { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
+        payload
+      )
+    )
+  );
+
+  const succeeded = results.filter((r) => r.status === "fulfilled" && r.value === true).length;
+  const failed = results.length - succeeded;
+  console.log(`[Push] Site notification complete: ${succeeded} succeeded, ${failed} failed out of ${results.length} total`);
+}

@@ -6,7 +6,7 @@ import { storage } from "./storage";
 import { hashPassword, verifyPassword, requireAuth, requireAdmin, requirePlantOrAdmin, requireRole, getCurrentUser } from "./auth";
 import { insertPartySchema, insertDispatchSchema } from "@shared/schema";
 import { z } from "zod";
-import { getVapidPublicKey, broadcastNotification } from "./push-notifications";
+import { getVapidPublicKey, broadcastNotification, sendSiteNotification } from "./push-notifications";
 
 let io: SocketIOServer;
 
@@ -637,12 +637,12 @@ export async function registerRoutes(
         siteName: site.siteName,
       });
 
-      broadcastNotification({
+      sendSiteNotification(siteId, {
         title: "🚛 New Dispatch Created",
         body: `${challanNo} - ${loadMT} MT to ${site.siteName}`,
         tag: `dispatch-${dispatch.id}`,
         data: { type: "new-dispatch", dispatchId: dispatch.id },
-      }).catch((err) => console.error("Push broadcast error:", err));
+      }).catch((err) => console.error("Push notification error:", err));
 
       return res.json(dispatch);
     } catch (error) {
@@ -773,12 +773,12 @@ export async function registerRoutes(
         receiverName: arrivedByName,
       });
 
-      broadcastNotification({
+      sendSiteNotification(dispatch.siteId, {
         title: "📦 Dispatch Arrived",
         body: `${dispatch.challanNo} arrived at ${dispatch.siteName} - Received by ${arrivedByName}`,
         tag: `arrived-${dispatch.id}`,
         data: { type: "arrived", dispatchId: dispatch.id },
-      }).catch((err) => console.error("Push broadcast error:", err));
+      }).catch((err) => console.error("Push notification error:", err));
 
       return res.json(updated);
     } catch (error) {
@@ -825,12 +825,12 @@ export async function registerRoutes(
         receiverName: leftByName,
       });
 
-      broadcastNotification({
+      sendSiteNotification(dispatch.siteId, {
         title: "✅ Dispatch Left/Unloaded",
         body: `${dispatch.challanNo} left ${dispatch.siteName} - ${leftByName}`,
         tag: `left-${dispatch.id}`,
         data: { type: "left", dispatchId: dispatch.id },
-      }).catch((err) => console.error("Push broadcast error:", err));
+      }).catch((err) => console.error("Push notification error:", err));
 
       return res.json(updated);
     } catch (error) {
@@ -1022,12 +1022,12 @@ export async function registerRoutes(
         receiverName: arrivedByName,
       });
 
-      broadcastNotification({
+      sendSiteNotification(dispatch.siteId, {
         title: "📦 Dispatch Arrived",
         body: `${dispatch.challanNo} arrived at ${dispatch.siteName} - Received by ${arrivedByName}`,
         tag: `arrived-${dispatch.id}`,
         data: { type: "arrived", dispatchId: dispatch.id },
-      }).catch((err) => console.error("Push broadcast error:", err));
+      }).catch((err) => console.error("Push notification error:", err));
 
       return res.json(updated);
     } catch (error) {
@@ -1088,12 +1088,12 @@ export async function registerRoutes(
         receiverName: leftByName,
       });
 
-      broadcastNotification({
+      sendSiteNotification(dispatch.siteId, {
         title: "✅ Dispatch Left/Unloaded",
         body: `${dispatch.challanNo} left ${dispatch.siteName} - ${leftByName}`,
         tag: `left-${dispatch.id}`,
         data: { type: "left", dispatchId: dispatch.id },
-      }).catch((err) => console.error("Push broadcast error:", err));
+      }).catch((err) => console.error("Push notification error:", err));
 
       return res.json(updated);
     } catch (error) {
