@@ -57,12 +57,23 @@ export async function registerRoutes(
   );
 
   app.get("/api/manifest", (req: Request, res: Response) => {
-    let path = (req.query.path as string) || "/";
+    let path = (req.query.path as string) || "";
+
+    if (!path) {
+      const referer = req.headers.referer || req.headers.referrer || "";
+      try {
+        const refUrl = new URL(referer, `http://${req.headers.host}`);
+        path = refUrl.pathname;
+      } catch {
+        path = "/";
+      }
+    }
+
     if (!path.startsWith("/")) path = "/";
     path = path.split("?")[0].split("#")[0];
     const isSitePage = path.startsWith("/site/") || path === "/site";
 
-    const manifest = {
+    const manifest: Record<string, unknown> = {
       name: isSitePage ? "DispatchPro Site" : "DispatchPro - Highlane Constructions",
       short_name: isSitePage ? "DP Site" : "DispatchPro",
       description: "Dispatch Management System for material and mix deliveries",
@@ -88,7 +99,12 @@ export async function registerRoutes(
       ],
     };
 
+    if (isSitePage) {
+      manifest.id = path;
+    }
+
     res.setHeader("Content-Type", "application/manifest+json");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.json(manifest);
   });
 
