@@ -1507,13 +1507,12 @@ export default function AdminDashboard() {
                       <TableHead>Status</TableHead>
                       <TableHead>Received By</TableHead>
                       <TableHead>Truck Released By</TableHead>
-                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredDispatches.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={11} className="text-center text-gray-500 py-8">
+                        <TableCell colSpan={10} className="text-center text-gray-500 py-8">
                           No dispatches found
                         </TableCell>
                       </TableRow>
@@ -1545,33 +1544,31 @@ export default function AdminDashboard() {
                             </TableCell>
                             <TableCell>{dispatch.arrivedByName || "-"}</TableCell>
                             <TableCell>{dispatch.leftByName || "-"}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => openEditDispatchDialog(dispatch)}
-                                  title="Edit dispatch"
-                                  data-testid={`button-edit-dispatch-${dispatch.id}`}
-                                >
-                                  <Edit2 className="h-4 w-4 text-blue-500" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => requestDeleteDispatch(dispatch)}
-                                  title="Delete dispatch"
-                                  data-testid={`button-delete-dispatch-${dispatch.id}`}
-                                >
-                                  <Trash2 className="h-4 w-4 text-red-500" />
-                                </Button>
-                              </div>
-                            </TableCell>
                           </TableRow>
                         );
                       })
                     )}
                   </TableBody>
+                  {filteredDispatches.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-muted/50 border-t-2">
+                        <td className="p-2 font-bold text-sm" data-testid="text-report-total-label">
+                          Total: {filteredDispatches.length} dispatches
+                        </td>
+                        <td className="p-2"></td>
+                        <td className="p-2"></td>
+                        <td className="p-2"></td>
+                        <td className="p-2"></td>
+                        <td className="p-2 font-bold text-sm" data-testid="text-report-total-load">
+                          {filteredDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0).toFixed(2)}
+                        </td>
+                        <td className="p-2"></td>
+                        <td className="p-2"></td>
+                        <td className="p-2"></td>
+                        <td className="p-2"></td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </Table>
               </CardContent>
             </Card>
