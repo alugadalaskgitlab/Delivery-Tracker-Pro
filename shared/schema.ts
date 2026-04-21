@@ -47,6 +47,7 @@ export const sites = pgTable("sites", {
   orderedMT: numeric("ordered_mt", { precision: 10, scale: 2 }).notNull().default("0"),
   accessId: text("access_id").notNull().unique(),
   status: text("status").notNull().default("ACTIVE"),
+  notifyMobile: text("notify_mobile"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -83,6 +84,8 @@ export const dispatches = pgTable("dispatches", {
   siteName: text("site_name").notNull(),
   mixType: text("mix_type"),
   vehicleNo: text("vehicle_no").notNull(),
+  driverName: text("driver_name"),
+  driverMobile: text("driver_mobile"),
   loadMT: numeric("load_mt", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   status: text("status").notNull(),

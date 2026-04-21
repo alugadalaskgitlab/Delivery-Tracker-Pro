@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword, requireAuth, requireAdmin, requirePlantOr
 import { insertPartySchema, insertDispatchSchema } from "@shared/schema";
 import { z } from "zod";
 import { getVapidPublicKey, broadcastNotification, sendSiteNotification } from "./push-notifications";
+import { triggerSiteNotification } from "./sms-notifications";
 
 let io: SocketIOServer;
 
@@ -459,7 +460,7 @@ export async function registerRoutes(
   app.post("/api/parties/:partyId/sites", requireAdmin, async (req: Request, res: Response) => {
     try {
       const { partyId } = req.params;
-      const { siteName, mixType, orderedMT } = req.body;
+      const { siteName, mixType, orderedMT, notifyMobile } = req.body;
 
       if (!siteName || typeof siteName !== "string" || siteName.trim().length === 0) {
         return res.status(400).json({ error: "Site name is required" });
@@ -480,6 +481,7 @@ export async function registerRoutes(
         mixType: mixType?.toUpperCase() || "DBM",
         orderedMT: orderedMT || "0",
         accessId,
+        notifyMobile: notifyMobile?.trim() || null,
       });
 
       return res.json(site);
@@ -524,7 +526,7 @@ export async function registerRoutes(
   app.put("/api/sites/:id", requireAdmin, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { ownerPin, siteName, siteCode, mixType, orderedMT, status } = req.body;
+      const { ownerPin, siteName, siteCode, mixType, orderedMT, status, notifyMobile } = req.body;
 
       const storedOwnerPin = await storage.getSetting("owner_pin");
       if (ownerPin !== storedOwnerPin) {
@@ -536,12 +538,13 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Site not found" });
       }
 
-      const updateData: { siteName?: string; siteCode?: string; mixType?: string; orderedMT?: string; status?: string; accessId?: string } = {};
+      const updateData: { siteName?: string; siteCode?: string; mixType?: string; orderedMT?: string; status?: string; accessId?: string; notifyMobile?: string | null } = {};
       if (siteName !== undefined) updateData.siteName = siteName.toUpperCase();
       if (siteCode !== undefined) updateData.siteCode = siteCode.toUpperCase();
       if (mixType !== undefined) updateData.mixType = mixType.toUpperCase();
       if (orderedMT !== undefined) updateData.orderedMT = orderedMT;
       if (status !== undefined) updateData.status = status;
+      if (notifyMobile !== undefined) updateData.notifyMobile = notifyMobile?.trim() || null;
 
       if (status === "ACTIVE" && currentSite.status !== "ACTIVE") {
         updateData.accessId = randomToken();
@@ -607,7 +610,7 @@ export async function registerRoutes(
 
   app.post("/api/dispatches", requirePlantOrAdmin, async (req: Request, res: Response) => {
     try {
-      const { partyId, siteId, vehicleNo, loadMT, notes } = req.body;
+      const { partyId, siteId, vehicleNo, loadMT, notes, driverName, driverMobile } = req.body;
       
       if (!partyId || !siteId || !vehicleNo || !loadMT) {
         return res.status(400).json({ error: "Party, site, vehicle number and load are required" });
@@ -640,6 +643,8 @@ export async function registerRoutes(
         siteName: site.siteName,
         mixType: site.mixType,
         vehicleNo: vehicleNo.toUpperCase(),
+        driverName: driverName?.trim() || null,
+        driverMobile: driverMobile?.trim() || null,
         loadMT,
         status: "DISPATCHED",
         notes: notes?.toUpperCase() || null,
@@ -659,6 +664,20 @@ export async function registerRoutes(
         tag: `dispatch-${dispatch.id}`,
         data: { type: "new-dispatch", dispatchId: dispatch.id, url: `/site/${site.accessId}` },
       }).catch((err) => console.error("Push notification error:", err));
+
+      if (site.notifyMobile) {
+        triggerSiteNotification({
+          event: "DISPATCHED",
+          challanNo,
+          siteName: site.siteName,
+          vehicleNo: vehicleNo.toUpperCase(),
+          driverName: driverName?.trim() || null,
+          driverMobile: driverMobile?.trim() || null,
+          loadMT,
+          notifyMobile: site.notifyMobile,
+          timestamp: new Date(),
+        });
+      }
 
       return res.json(dispatch);
     } catch (error) {
@@ -680,6 +699,8 @@ export async function registerRoutes(
         vehicleNo: z.string().min(1, "Vehicle number is required").transform(v => v.toUpperCase()),
         loadMT: z.string().min(1, "Load is required").refine(v => !isNaN(Number(v)) && Number(v) > 0, "Load must be a positive number"),
         notes: z.string().optional().default(""),
+        driverName: z.string().optional().nullable(),
+        driverMobile: z.string().optional().nullable(),
       });
 
       const parsed = editSchema.safeParse(req.body);
@@ -687,7 +708,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid input" });
       }
 
-      const { ownerPin, vehicleNo, loadMT, notes } = parsed.data;
+      const { ownerPin, vehicleNo, loadMT, notes, driverName, driverMobile } = parsed.data;
 
       const storedOwnerPin = await storage.getSetting("owner_pin");
       if (!storedOwnerPin) {
@@ -707,6 +728,8 @@ export async function registerRoutes(
         vehicleNo,
         loadMT: String(Number(loadMT)),
         notes: notes ? notes.toUpperCase() : null,
+        driverName: driverName?.trim() || null,
+        driverMobile: driverMobile?.trim() || null,
       });
       return res.json(updated);
     } catch (error) {
@@ -797,6 +820,20 @@ export async function registerRoutes(
         data: { type: "arrived", dispatchId: dispatch.id, url: arrSite ? `/site/${arrSite.accessId}` : "/" },
       }).catch((err) => console.error("Push notification error:", err));
 
+      if (arrSite?.notifyMobile) {
+        triggerSiteNotification({
+          event: "ARRIVED",
+          challanNo: dispatch.challanNo,
+          siteName: dispatch.siteName,
+          vehicleNo: dispatch.vehicleNo,
+          driverName: dispatch.driverName,
+          driverMobile: dispatch.driverMobile,
+          loadMT: String(dispatch.loadMT),
+          notifyMobile: arrSite.notifyMobile,
+          timestamp: new Date(),
+        });
+      }
+
       return res.json(updated);
     } catch (error) {
       console.error("Arrived error:", error);
@@ -828,7 +865,7 @@ export async function registerRoutes(
       }
 
       const updated = await storage.updateDispatch(id, {
-        status: "LEFT",
+        status: "UNLOADED",
         leftAt: new Date(),
         leftByName,
       });
@@ -838,17 +875,31 @@ export async function registerRoutes(
         dispatch: updated,
         partyName: party?.partyName || "",
         partyCode: party?.partyCode || "",
-        newStatus: "LEFT",
+        newStatus: "UNLOADED",
         receiverName: leftByName,
       });
 
       const leftSite = await storage.getSite(dispatch.siteId);
       sendSiteNotification(dispatch.siteId, {
-        title: "✅ Dispatch Left/Unloaded",
-        body: `${dispatch.challanNo} left ${dispatch.siteName} - ${leftByName}`,
+        title: "✅ Dispatch Unloaded",
+        body: `${dispatch.challanNo} unloaded at ${dispatch.siteName} - ${leftByName}`,
         tag: `left-${dispatch.id}`,
         data: { type: "left", dispatchId: dispatch.id, url: leftSite ? `/site/${leftSite.accessId}` : "/" },
       }).catch((err) => console.error("Push notification error:", err));
+
+      if (leftSite?.notifyMobile) {
+        triggerSiteNotification({
+          event: "UNLOADED",
+          challanNo: dispatch.challanNo,
+          siteName: dispatch.siteName,
+          vehicleNo: dispatch.vehicleNo,
+          driverName: dispatch.driverName,
+          driverMobile: dispatch.driverMobile,
+          loadMT: String(dispatch.loadMT),
+          notifyMobile: leftSite.notifyMobile,
+          timestamp: new Date(),
+        });
+      }
 
       return res.json(updated);
     } catch (error) {
@@ -872,7 +923,7 @@ export async function registerRoutes(
         }
         const dispatches = await storage.getDispatchesBySite(site.id);
         const receivedMT = dispatches
-          .filter(d => d.status === "LEFT")
+          .filter(d => d.status === "UNLOADED")
           .reduce((sum, d) => sum + Number(d.loadMT), 0);
         const totalDispatched = dispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
         const orderedMT = Number(site.orderedMT || 0);
@@ -900,7 +951,7 @@ export async function registerRoutes(
         const totalOrderedMT = sites.reduce((sum, s) => sum + Number(s.orderedMT || 0), 0);
         const dispatches = await storage.getDispatchesByParty(party.id);
         const receivedMT = dispatches
-          .filter(d => d.status === "LEFT")
+          .filter(d => d.status === "UNLOADED")
           .reduce((sum, d) => sum + Number(d.loadMT), 0);
         return res.json({
           valid: true,
@@ -919,7 +970,7 @@ export async function registerRoutes(
         const totalOrderedMT = sites.reduce((sum, s) => sum + Number(s.orderedMT || 0), 0);
         const dispatches = await storage.getDispatchesByParty(partyByAccess.id);
         const receivedMT = dispatches
-          .filter(d => d.status === "LEFT")
+          .filter(d => d.status === "UNLOADED")
           .reduce((sum, d) => sum + Number(d.loadMT), 0);
         return res.json({
           valid: true,
@@ -1048,6 +1099,20 @@ export async function registerRoutes(
         data: { type: "arrived", dispatchId: dispatch.id, url: arrSite ? `/site/${arrSite.accessId}` : "/" },
       }).catch((err) => console.error("Push notification error:", err));
 
+      if (arrSite?.notifyMobile) {
+        triggerSiteNotification({
+          event: "ARRIVED",
+          challanNo: dispatch.challanNo,
+          siteName: dispatch.siteName,
+          vehicleNo: dispatch.vehicleNo,
+          driverName: dispatch.driverName,
+          driverMobile: dispatch.driverMobile,
+          loadMT: String(dispatch.loadMT),
+          notifyMobile: arrSite.notifyMobile,
+          timestamp: new Date(),
+        });
+      }
+
       return res.json(updated);
     } catch (error) {
       console.error("Site arrived error:", error);
@@ -1094,7 +1159,7 @@ export async function registerRoutes(
       }
 
       const updated = await storage.updateDispatch(id, {
-        status: "LEFT",
+        status: "UNLOADED",
         leftAt: new Date(),
         leftByName,
       });
@@ -1103,17 +1168,31 @@ export async function registerRoutes(
         dispatch: updated,
         partyName: result.party.partyName,
         partyCode: result.party.partyCode,
-        newStatus: "LEFT",
+        newStatus: "UNLOADED",
         receiverName: leftByName,
       });
 
       const leftSite = await storage.getSite(dispatch.siteId);
       sendSiteNotification(dispatch.siteId, {
-        title: "✅ Dispatch Left/Unloaded",
-        body: `${dispatch.challanNo} left ${dispatch.siteName} - ${leftByName}`,
+        title: "✅ Dispatch Unloaded",
+        body: `${dispatch.challanNo} unloaded at ${dispatch.siteName} - ${leftByName}`,
         tag: `left-${dispatch.id}`,
         data: { type: "left", dispatchId: dispatch.id, url: leftSite ? `/site/${leftSite.accessId}` : "/" },
       }).catch((err) => console.error("Push notification error:", err));
+
+      if (leftSite?.notifyMobile) {
+        triggerSiteNotification({
+          event: "UNLOADED",
+          challanNo: dispatch.challanNo,
+          siteName: dispatch.siteName,
+          vehicleNo: dispatch.vehicleNo,
+          driverName: dispatch.driverName,
+          driverMobile: dispatch.driverMobile,
+          loadMT: String(dispatch.loadMT),
+          notifyMobile: leftSite.notifyMobile,
+          timestamp: new Date(),
+        });
+      }
 
       return res.json(updated);
     } catch (error) {

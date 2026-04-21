@@ -46,7 +46,7 @@ export interface IStorage {
   getSite(id: string): Promise<Site | undefined>;
   getSiteByAccessId(accessId: string): Promise<Site | undefined>;
   createSite(site: InsertSite): Promise<Site>;
-  updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status' | 'accessId'>>): Promise<Site | undefined>;
+  updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status' | 'accessId' | 'notifyMobile'>>): Promise<Site | undefined>;
   deleteSite(id: string): Promise<boolean>;
   
   getDispatches(): Promise<Dispatch[]>;
@@ -150,7 +150,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status' | 'accessId'>>): Promise<Site | undefined> {
+  async updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status' | 'accessId' | 'notifyMobile'>>): Promise<Site | undefined> {
     const result = await db.update(sites).set(data).where(eq(sites.id, id)).returning();
     return result[0];
   }

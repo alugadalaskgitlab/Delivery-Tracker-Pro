@@ -50,9 +50,11 @@ type Dispatch = {
   orderRefNo?: string | null;
   siteName: string;
   vehicleNo: string;
+  driverName?: string | null;
+  driverMobile?: string | null;
   loadMT: string;
   createdAt: string;
-  status: "DISPATCHED" | "ARRIVED" | "LEFT";
+  status: "DISPATCHED" | "ARRIVED" | "UNLOADED";
   arrivedAt?: string | null;
   leftAt?: string | null;
   arrivedByName?: string | null;
@@ -68,6 +70,8 @@ export default function PlantDispatch() {
   const [partyId, setPartyId] = useState("");
   const [siteId, setSiteId] = useState("");
   const [vehicleNo, setVehicleNo] = useState("");
+  const [driverName, setDriverName] = useState("");
+  const [driverMobile, setDriverMobile] = useState("");
   const [loadMT, setLoadMT] = useState("");
   const [notes, setNotes] = useState("");
   const [nextChallan, setNextChallan] = useState<string | null>(null);
@@ -167,6 +171,8 @@ export default function PlantDispatch() {
       setPartyId("");
       setSiteId("");
       setVehicleNo("");
+      setDriverName("");
+      setDriverMobile("");
       setLoadMT("");
       setNotes("");
       toast({
@@ -233,6 +239,8 @@ export default function PlantDispatch() {
       siteId: selectedSite.id,
       siteName: selectedSite.siteName,
       vehicleNo: vehicleNo.trim().toUpperCase(),
+      driverName: driverName.trim() || undefined,
+      driverMobile: driverMobile.trim() || undefined,
       loadMT: String(loadNum),
       status: "DISPATCHED",
       notes: notes.trim() || undefined,
@@ -377,6 +385,29 @@ export default function PlantDispatch() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="driverName">Driver Name</Label>
+                  <Input
+                    id="driverName"
+                    data-testid="input-driver-name"
+                    value={driverName}
+                    onChange={(e) => setDriverName(e.target.value)}
+                    placeholder="Enter driver name (optional)"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="driverMobile">Driver Mobile</Label>
+                  <Input
+                    id="driverMobile"
+                    data-testid="input-driver-mobile"
+                    value={driverMobile}
+                    onChange={(e) => setDriverMobile(e.target.value)}
+                    placeholder="e.g., 9876543210 (optional)"
+                    maxLength={15}
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="loadMT">Load (MT) *</Label>
                   <Input
                     id="loadMT"
@@ -426,11 +457,11 @@ export default function PlantDispatch() {
                   <TableHead>Challan No</TableHead>
                   <TableHead>Party</TableHead>
                   <TableHead>Site</TableHead>
-                  <TableHead>Vehicle</TableHead>
+                  <TableHead>Vehicle / Driver</TableHead>
                   <TableHead>Load (MT)</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead>Dispatched At</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Receiver</TableHead>
+                  <TableHead>Timestamps</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -451,13 +482,23 @@ export default function PlantDispatch() {
                         </div>
                       </TableCell>
                       <TableCell>{dispatch.siteName}</TableCell>
-                      <TableCell>{dispatch.vehicleNo}</TableCell>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{dispatch.vehicleNo}</div>
+                          {dispatch.driverName && (
+                            <div className="text-xs text-gray-600">{dispatch.driverName}</div>
+                          )}
+                          {dispatch.driverMobile && (
+                            <div className="text-xs text-blue-600">{dispatch.driverMobile}</div>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>{Number(dispatch.loadMT).toFixed(2)}</TableCell>
                       <TableCell>{format(new Date(dispatch.createdAt), "dd MMM yyyy HH:mm")}</TableCell>
                       <TableCell>
                         <Badge
                           variant={
-                            dispatch.status === "LEFT"
+                            dispatch.status === "UNLOADED"
                               ? "default"
                               : dispatch.status === "ARRIVED"
                               ? "secondary"
@@ -465,26 +506,25 @@ export default function PlantDispatch() {
                           }
                           data-testid={`badge-status-${dispatch.id}`}
                         >
-                          {dispatch.status}
+                          {dispatch.status === "UNLOADED" ? "Unloaded" : dispatch.status === "ARRIVED" ? "Arrived" : "Dispatched"}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {dispatch.status === "ARRIVED" && dispatch.arrivedByName && (
-                          <div className="text-sm">
-                            <div className="font-medium">{dispatch.arrivedByName}</div>
-                            <div className="text-gray-500">
-                              {dispatch.arrivedAt && format(new Date(dispatch.arrivedAt), "dd MMM HH:mm")}
-                            </div>
+                        <div className="text-xs space-y-1">
+                          <div className="text-gray-500">
+                            <span className="font-medium">In:</span> {format(new Date(dispatch.createdAt), "dd MMM HH:mm")}
                           </div>
-                        )}
-                        {dispatch.status === "LEFT" && dispatch.leftByName && (
-                          <div className="text-sm">
-                            <div className="font-medium">{dispatch.leftByName}</div>
-                            <div className="text-gray-500">
-                              {dispatch.leftAt && format(new Date(dispatch.leftAt), "dd MMM HH:mm")}
+                          {dispatch.arrivedAt && (
+                            <div className="text-yellow-600">
+                              <span className="font-medium">Arrived:</span> {format(new Date(dispatch.arrivedAt), "dd MMM HH:mm")}
                             </div>
-                          </div>
-                        )}
+                          )}
+                          {dispatch.leftAt && (
+                            <div className="text-green-600">
+                              <span className="font-medium">Unloaded:</span> {format(new Date(dispatch.leftAt), "dd MMM HH:mm")}
+                            </div>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

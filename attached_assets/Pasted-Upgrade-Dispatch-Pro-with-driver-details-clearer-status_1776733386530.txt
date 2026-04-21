@@ -1,0 +1,151 @@
+Upgrade Dispatch Pro with driver details, clearer status timestamps, and site-linked notification setup. Keep the UI clean and practical for dispatch/site operations. Do not redesign unrelated modules.
+
+GOAL
+Improve Dispatch Pro so each dispatch clearly carries driver contact details, better status visibility, and site-linked notification readiness.
+
+PART 1 — ADD DRIVER DETAILS TO DISPATCH CREATION
+
+In the dispatch creation form, add these fields:
+
+- Driver Name
+- Driver Mobile Number
+
+Behavior:
+- Save both fields with each dispatch record
+- Keep them editable
+- Validate mobile number format reasonably
+- If mobile is empty, allow save only if current workflow already allows incomplete transport details; otherwise make it required based on your current dispatch design
+
+These fields should appear near:
+- Vehicle Number
+- Party
+- Site
+
+PART 2 — SHOW DRIVER DETAILS EVERYWHERE RELEVANT
+
+Display Driver Name and Driver Mobile Number in:
+
+- Dispatch summary/list
+- Dispatch detail screen
+- Site link screen
+- Any dispatch card/timeline where vehicle/party/site are shown
+
+Goal:
+site staff should immediately know:
+- who the driver is
+- which number to call
+
+PART 3 — RENAME STATUS "LEFT" TO "UNLOADED"
+
+Wherever the dispatch lifecycle currently shows:
+- Dispatched
+- Arrived
+- Left
+
+rename "Left" to:
+
+- Unloaded
+
+Use this label consistently in:
+- site link screen
+- dispatch detail
+- dispatch summary/timeline
+- status badges
+- status history / audit display
+
+PART 4 — SHOW STATUS TIMESTAMPS CLEARLY
+
+For every dispatch, show these timestamps clearly:
+
+- Dispatched at
+- Arrived at
+- Unloaded at
+
+These should be visible in:
+- Dispatch detail view
+- Site link screen
+- Summary/timeline view wherever practical
+
+Keep display clean and readable.
+If a status has not yet occurred, show blank / pending / dash cleanly.
+
+PART 5 — SITE LINK MOBILE NUMBER CONFIGURATION
+
+Add support to associate the site link with one or more mobile numbers for notifications.
+
+At minimum, support:
+- one primary mobile number per site link
+
+If easy in current architecture, support:
+- multiple mobile numbers per site link
+
+Store these as notification recipients for that site/site-link.
+
+Suggested labels:
+- Site Notification Mobile
+or
+- Notify Mobile Number(s)
+
+PART 6 — NOTIFICATION READINESS FOR STATUS EVENTS
+
+Prepare the system so dispatch status changes can trigger notifications to the site-linked mobile number(s).
+
+Required status events:
+- Dispatch created / dispatched
+- Arrived
+- Unloaded
+
+IMPORTANT:
+If actual SMS / WhatsApp integration is not yet implemented, still structure the data model and event hooks cleanly so this can be added later without rework.
+
+So for now:
+- store recipient mobile(s)
+- map dispatch status events to notification-ready triggers
+- keep actual sending integration optional / stubbed if needed
+
+PART 7 — SITE LINK SCREEN IMPROVEMENT
+
+In the site link screen, each dispatch should clearly show:
+
+- Party
+- Site
+- Vehicle Number
+- Driver Name
+- Driver Mobile Number
+- Weight / quantity
+- Current status
+- Dispatched at
+- Arrived at
+- Unloaded at
+
+Keep this compact and readable, not cluttered.
+
+PART 8 — UI / WORDING
+
+Use clear operational labels:
+- Driver Name
+- Driver Mobile
+- Dispatched at
+- Arrived at
+- Unloaded at
+
+Avoid awkward wording.
+Keep same visual style as existing app.
+
+PART 9 — ACCEPTANCE CHECKLIST
+
+1. Dispatch creation form includes Driver Name and Driver Mobile Number.
+2. Driver details are saved with each dispatch.
+3. Driver details are shown in summary, detail, and site link screen.
+4. Status label “Left” is renamed everywhere to “Unloaded”.
+5. Timestamps for Dispatched / Arrived / Unloaded are clearly shown.
+6. Site link can store notification mobile number(s).
+7. Dispatch status events are notification-ready for future SMS/WhatsApp integration.
+8. UI remains clean and practical.
+
+After implementing, confirm:
+- where driver fields were added
+- where driver details are shown
+- where “Left” was renamed to “Unloaded”
+- how site notification mobile number(s) are stored
+- whether status notification hooks are now ready for SMS/WhatsApp later

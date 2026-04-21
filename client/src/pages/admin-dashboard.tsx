@@ -70,6 +70,7 @@ type Site = {
   orderedMT: string;
   accessId: string;
   status: string;
+  notifyMobile?: string | null;
   createdAt: string;
 };
 
@@ -84,9 +85,11 @@ type Dispatch = {
   siteName: string;
   mixType?: string | null;
   vehicleNo: string;
+  driverName?: string | null;
+  driverMobile?: string | null;
   loadMT: string;
   createdAt: string;
-  status: "DISPATCHED" | "ARRIVED" | "LEFT";
+  status: "DISPATCHED" | "ARRIVED" | "UNLOADED";
   arrivedAt?: string | null;
   leftAt?: string | null;
   arrivedByName?: string | null;
@@ -138,7 +141,7 @@ export default function AdminDashboard() {
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ type: "party" | "dispatch"; id: string } | null>(null);
   const [pendingStatusAction, setPendingStatusAction] = useState<{ partyId: string; newStatus: PartyStatus } | null>(null);
   const [editingDispatch, setEditingDispatch] = useState<Dispatch | null>(null);
-  const [editDispatchForm, setEditDispatchForm] = useState({ vehicleNo: "", loadMT: "", notes: "" });
+  const [editDispatchForm, setEditDispatchForm] = useState({ vehicleNo: "", loadMT: "", notes: "", driverName: "", driverMobile: "" });
   const [editDispatchOwnerPin, setEditDispatchOwnerPin] = useState("");
 
   useEffect(() => {
@@ -190,11 +193,13 @@ export default function AdminDashboard() {
   const [newSiteName, setNewSiteName] = useState("");
   const [newSiteMixType, setNewSiteMixType] = useState("DBM");
   const [newSiteOrderedMT, setNewSiteOrderedMT] = useState("");
+  const [newSiteNotifyMobile, setNewSiteNotifyMobile] = useState("");
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [editSiteName, setEditSiteName] = useState("");
   const [editSiteCode, setEditSiteCode] = useState("");
   const [editSiteMixType, setEditSiteMixType] = useState("DBM");
   const [editSiteOrderedMT, setEditSiteOrderedMT] = useState("");
+  const [editSiteNotifyMobile, setEditSiteNotifyMobile] = useState("");
   const [editSiteOwnerPin, setEditSiteOwnerPin] = useState("");
 
   const { data: parties = [], isLoading: loadingParties } = useQuery<Party[]>({
@@ -312,11 +317,11 @@ export default function AdminDashboard() {
   });
 
   const editDispatchMutation = useMutation({
-    mutationFn: async ({ id, ownerPin, vehicleNo, loadMT, notes }: { id: string; ownerPin: string; vehicleNo: string; loadMT: string; notes: string }) => {
+    mutationFn: async ({ id, ownerPin, vehicleNo, loadMT, notes, driverName, driverMobile }: { id: string; ownerPin: string; vehicleNo: string; loadMT: string; notes: string; driverName?: string; driverMobile?: string }) => {
       const res = await fetch(`/api/dispatches/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerPin, vehicleNo, loadMT, notes }),
+        body: JSON.stringify({ ownerPin, vehicleNo, loadMT, notes, driverName, driverMobile }),
       });
       if (!res.ok) {
         const error = await res.json();
@@ -378,11 +383,11 @@ export default function AdminDashboard() {
   }, [allSites, parties, dispatches]);
 
   const createSiteMutation = useMutation({
-    mutationFn: async ({ partyId, siteName, mixType, orderedMT }: { partyId: string; siteName: string; mixType: string; orderedMT: string }) => {
+    mutationFn: async ({ partyId, siteName, mixType, orderedMT, notifyMobile }: { partyId: string; siteName: string; mixType: string; orderedMT: string; notifyMobile?: string }) => {
       const res = await fetch(`/api/parties/${partyId}/sites`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ siteName, mixType, orderedMT: orderedMT || "0" }),
+        body: JSON.stringify({ siteName, mixType, orderedMT: orderedMT || "0", notifyMobile }),
       });
       if (!res.ok) {
         const error = await res.json();
@@ -395,6 +400,7 @@ export default function AdminDashboard() {
       setNewSiteName("");
       setNewSiteMixType("DBM");
       setNewSiteOrderedMT("");
+      setNewSiteNotifyMobile("");
       toast({ title: "Success", description: "Site added successfully" });
     },
     onError: (error: Error) => {
@@ -425,7 +431,7 @@ export default function AdminDashboard() {
   });
 
   const updateSiteMutation = useMutation({
-    mutationFn: async ({ id, ownerPin, siteName, siteCode, mixType, orderedMT, status }: { 
+    mutationFn: async ({ id, ownerPin, siteName, siteCode, mixType, orderedMT, status, notifyMobile }: { 
       id: string; 
       ownerPin: string; 
       siteName?: string; 
@@ -433,11 +439,12 @@ export default function AdminDashboard() {
       mixType?: string; 
       orderedMT?: string;
       status?: string;
+      notifyMobile?: string;
     }) => {
       const res = await fetch(`/api/sites/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerPin, siteName, siteCode, mixType, orderedMT, status }),
+        body: JSON.stringify({ ownerPin, siteName, siteCode, mixType, orderedMT, status, notifyMobile }),
       });
       if (!res.ok) {
         const error = await res.json();
@@ -526,8 +533,8 @@ export default function AdminDashboard() {
   function getPartyTotals(partyId: string) {
     const partyDispatches = dispatches.filter((d) => d.partyId === partyId);
     const dispatched = partyDispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
-    const arrived = partyDispatches.filter((d) => d.status === "ARRIVED" || d.status === "LEFT").reduce((sum, d) => sum + Number(d.loadMT), 0);
-    const completed = partyDispatches.filter((d) => d.status === "LEFT").reduce((sum, d) => sum + Number(d.loadMT), 0);
+    const arrived = partyDispatches.filter((d) => d.status === "ARRIVED" || d.status === "UNLOADED").reduce((sum, d) => sum + Number(d.loadMT), 0);
+    const completed = partyDispatches.filter((d) => d.status === "UNLOADED").reduce((sum, d) => sum + Number(d.loadMT), 0);
     return { dispatched, arrived, completed, count: partyDispatches.length };
   }
 
@@ -659,6 +666,8 @@ export default function AdminDashboard() {
       vehicleNo: dispatch.vehicleNo,
       loadMT: dispatch.loadMT,
       notes: dispatch.notes || "",
+      driverName: dispatch.driverName || "",
+      driverMobile: dispatch.driverMobile || "",
     });
     setEditDispatchOwnerPin("");
   }
@@ -671,6 +680,8 @@ export default function AdminDashboard() {
       vehicleNo: editDispatchForm.vehicleNo,
       loadMT: editDispatchForm.loadMT,
       notes: editDispatchForm.notes,
+      driverName: editDispatchForm.driverName,
+      driverMobile: editDispatchForm.driverMobile,
     });
   }
 
@@ -860,7 +871,7 @@ export default function AdminDashboard() {
                 <th>Date</th>
                 <th>Status</th>
                 <th>Received By</th>
-                <th>Truck Released By</th>
+                <th>Released By</th>
               </tr>
             </thead>
             <tbody>
@@ -1176,7 +1187,7 @@ export default function AdminDashboard() {
                         <TableHead>Challan No</TableHead>
                         <TableHead>Party</TableHead>
                         <TableHead>Site</TableHead>
-                        <TableHead>Vehicle</TableHead>
+                        <TableHead>Vehicle / Driver</TableHead>
                         <TableHead>Load (MT)</TableHead>
                         <TableHead>Date</TableHead>
                         <TableHead>Status</TableHead>
@@ -1197,20 +1208,30 @@ export default function AdminDashboard() {
                             <TableCell className="font-medium">{dispatch.challanNo}</TableCell>
                             <TableCell>{dispatch.partyName}</TableCell>
                             <TableCell>{dispatch.siteName}</TableCell>
-                            <TableCell>{dispatch.vehicleNo}</TableCell>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{dispatch.vehicleNo}</div>
+                                {dispatch.driverName && (
+                                  <div className="text-xs text-gray-600">{dispatch.driverName}</div>
+                                )}
+                                {dispatch.driverMobile && (
+                                  <div className="text-xs text-blue-600">{dispatch.driverMobile}</div>
+                                )}
+                              </div>
+                            </TableCell>
                             <TableCell>{Number(dispatch.loadMT).toFixed(2)}</TableCell>
                             <TableCell>{format(new Date(dispatch.createdAt), "dd/MM/yyyy HH:mm")}</TableCell>
                             <TableCell>
                               <Badge
                                 variant={
-                                  dispatch.status === "LEFT"
+                                  dispatch.status === "UNLOADED"
                                     ? "default"
                                     : dispatch.status === "ARRIVED"
                                     ? "secondary"
                                     : "outline"
                                 }
                               >
-                                {dispatch.status}
+                                {dispatch.status === "UNLOADED" ? "Unloaded" : dispatch.status === "ARRIVED" ? "Arrived" : "Dispatched"}
                               </Badge>
                             </TableCell>
                             <TableCell className="max-w-[120px] truncate">{dispatch.notes || "-"}</TableCell>
@@ -1293,7 +1314,7 @@ export default function AdminDashboard() {
                         <SelectItem value="all">All Status</SelectItem>
                         <SelectItem value="DISPATCHED">Dispatched</SelectItem>
                         <SelectItem value="ARRIVED">Arrived</SelectItem>
-                        <SelectItem value="LEFT">Left</SelectItem>
+                        <SelectItem value="UNLOADED">Unloaded</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1532,14 +1553,14 @@ export default function AdminDashboard() {
                             <TableCell>
                               <Badge
                                 variant={
-                                  dispatch.status === "LEFT"
+                                  dispatch.status === "UNLOADED"
                                     ? "default"
                                     : dispatch.status === "ARRIVED"
                                     ? "secondary"
                                     : "outline"
                                 }
                               >
-                                {dispatch.status}
+                                {dispatch.status === "UNLOADED" ? "Unloaded" : dispatch.status === "ARRIVED" ? "Arrived" : "Dispatched"}
                               </Badge>
                             </TableCell>
                             <TableCell>{dispatch.arrivedByName || "-"}</TableCell>
@@ -1850,6 +1871,17 @@ export default function AdminDashboard() {
                   />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="newSiteNotifyMobile">Notify Mobile(s)</Label>
+                <Input
+                  id="newSiteNotifyMobile"
+                  placeholder="e.g., 9876543210, 9123456789"
+                  value={newSiteNotifyMobile}
+                  onChange={(e) => setNewSiteNotifyMobile(e.target.value)}
+                  data-testid="input-new-site-notify-mobile"
+                />
+                <p className="text-xs text-muted-foreground">Comma-separated (for SMS/WhatsApp alerts)</p>
+              </div>
               <Button
                 onClick={() => {
                   if (managingSitesParty && newSiteName.trim()) {
@@ -1857,7 +1889,8 @@ export default function AdminDashboard() {
                       partyId: managingSitesParty.id, 
                       siteName: newSiteName.trim(),
                       mixType: newSiteMixType,
-                      orderedMT: newSiteOrderedMT || "0"
+                      orderedMT: newSiteOrderedMT || "0",
+                      notifyMobile: newSiteNotifyMobile.trim() || undefined,
                     });
                   }
                 }}
@@ -1903,6 +1936,7 @@ export default function AdminDashboard() {
                           setEditSiteCode(site.siteCode);
                           setEditSiteMixType(site.mixType);
                           setEditSiteOrderedMT(site.orderedMT);
+                          setEditSiteNotifyMobile(site.notifyMobile || "");
                           setEditSiteOwnerPin("");
                         }}
                         title="Edit site"
@@ -2030,6 +2064,17 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="space-y-2">
+              <Label htmlFor="editSiteNotifyMobile">Notify Mobile(s)</Label>
+              <Input
+                id="editSiteNotifyMobile"
+                placeholder="e.g., 9876543210, 9123456789"
+                value={editSiteNotifyMobile}
+                onChange={(e) => setEditSiteNotifyMobile(e.target.value)}
+                data-testid="input-edit-site-notify-mobile"
+              />
+              <p className="text-xs text-muted-foreground">Comma-separated for multiple numbers (for SMS/WhatsApp alerts)</p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="editSiteOwnerPin">Owner PIN *</Label>
               <Input
                 id="editSiteOwnerPin"
@@ -2054,7 +2099,8 @@ export default function AdminDashboard() {
                     siteName: editSiteName.trim(),
                     siteCode: editSiteCode.trim(),
                     mixType: editSiteMixType,
-                    orderedMT: editSiteOrderedMT || "0"
+                    orderedMT: editSiteOrderedMT || "0",
+                    notifyMobile: editSiteNotifyMobile.trim() || undefined,
                   });
                 }
               }}
@@ -2095,6 +2141,29 @@ export default function AdminDashboard() {
                 data-testid="input-edit-dispatch-vehicle"
               />
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label htmlFor="editDriverName">Driver Name</Label>
+                <Input
+                  id="editDriverName"
+                  value={editDispatchForm.driverName}
+                  onChange={(e) => setEditDispatchForm({ ...editDispatchForm, driverName: e.target.value })}
+                  placeholder="Driver name (optional)"
+                  data-testid="input-edit-dispatch-driver-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editDriverMobile">Driver Mobile</Label>
+                <Input
+                  id="editDriverMobile"
+                  value={editDispatchForm.driverMobile}
+                  onChange={(e) => setEditDispatchForm({ ...editDispatchForm, driverMobile: e.target.value })}
+                  placeholder="Mobile number"
+                  maxLength={15}
+                  data-testid="input-edit-dispatch-driver-mobile"
+                />
+              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="editLoadMT">Load (MT) *</Label>
               <Input
@@ -2118,6 +2187,23 @@ export default function AdminDashboard() {
                 data-testid="input-edit-dispatch-notes"
               />
             </div>
+            {editingDispatch && (
+              <div className="bg-gray-50 rounded-md p-3 space-y-1 text-xs">
+                <p className="font-semibold text-gray-700 mb-1">Timestamps</p>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Dispatched:</span>
+                  <span>{format(new Date(editingDispatch.createdAt), "dd MMM yyyy HH:mm")}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Arrived:</span>
+                  <span>{editingDispatch.arrivedAt ? format(new Date(editingDispatch.arrivedAt), "dd MMM yyyy HH:mm") : "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Unloaded:</span>
+                  <span>{editingDispatch.leftAt ? format(new Date(editingDispatch.leftAt), "dd MMM yyyy HH:mm") : "—"}</span>
+                </div>
+              </div>
+            )}
             <Separator />
             <div className="space-y-2">
               <Label htmlFor="editDispatchOwnerPin">Owner PIN *</Label>

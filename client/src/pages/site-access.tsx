@@ -32,9 +32,11 @@ type Dispatch = {
   orderRefNo?: string | null;
   siteName: string;
   vehicleNo: string;
+  driverName?: string | null;
+  driverMobile?: string | null;
   loadMT: number;
   createdAt: string;
-  status: "DISPATCHED" | "ARRIVED" | "LEFT";
+  status: "DISPATCHED" | "ARRIVED" | "UNLOADED";
   arrivedAt?: string | null;
   leftAt?: string | null;
   arrivedByName?: string | null;
@@ -137,7 +139,7 @@ export default function SiteAccess() {
       
       toast({
         title: "Success",
-        description: `Marked as ${variables.action === "arrived" ? "ARRIVED" : "LEFT"}`,
+        description: `Marked as ${variables.action === "arrived" ? "ARRIVED" : "UNLOADED"}`,
       });
     },
     onError: (error: Error) => {
@@ -208,7 +210,7 @@ export default function SiteAccess() {
 
   const dispatchedCount = dispatches.filter((d) => d.status === "DISPATCHED").length;
   const arrivedCount = dispatches.filter((d) => d.status === "ARRIVED").length;
-  const leftCount = dispatches.filter((d) => d.status === "LEFT").length;
+  const unloadedCount = dispatches.filter((d) => d.status === "UNLOADED").length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -283,8 +285,8 @@ export default function SiteAccess() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Completed</p>
-                  <p className="text-3xl font-bold" data-testid="count-left">{leftCount}</p>
+                  <p className="text-sm text-gray-600">Unloaded</p>
+                  <p className="text-3xl font-bold" data-testid="count-left">{unloadedCount}</p>
                 </div>
                 <PackageCheck className="h-8 w-8 text-green-500" />
               </div>
@@ -308,9 +310,9 @@ export default function SiteAccess() {
                   <TableRow>
                     <TableHead>Challan No</TableHead>
                     <TableHead>Site</TableHead>
-                    <TableHead>Vehicle</TableHead>
+                    <TableHead>Vehicle / Driver</TableHead>
                     <TableHead>Load (MT)</TableHead>
-                    <TableHead>Dispatched</TableHead>
+                    <TableHead>Timestamps</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -327,13 +329,41 @@ export default function SiteAccess() {
                       <TableRow key={dispatch.id} data-testid={`row-dispatch-${dispatch.id}`}>
                         <TableCell className="font-medium">{dispatch.challanNo}</TableCell>
                         <TableCell>{dispatch.siteName}</TableCell>
-                        <TableCell>{dispatch.vehicleNo}</TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{dispatch.vehicleNo}</div>
+                            {dispatch.driverName && (
+                              <div className="text-xs text-gray-600">{dispatch.driverName}</div>
+                            )}
+                            {dispatch.driverMobile && (
+                              <div className="text-xs text-blue-600">
+                                <a href={`tel:${dispatch.driverMobile}`}>{dispatch.driverMobile}</a>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>{Number(dispatch.loadMT).toFixed(2)}</TableCell>
-                        <TableCell>{format(new Date(dispatch.createdAt), "dd MMM HH:mm")}</TableCell>
+                        <TableCell>
+                          <div className="text-xs space-y-1">
+                            <div className="text-gray-500">
+                              <span className="font-medium">In:</span> {format(new Date(dispatch.createdAt), "dd MMM HH:mm")}
+                            </div>
+                            {dispatch.arrivedAt && (
+                              <div className="text-yellow-600">
+                                <span className="font-medium">Arrived:</span> {format(new Date(dispatch.arrivedAt), "dd MMM HH:mm")}
+                              </div>
+                            )}
+                            {dispatch.leftAt && (
+                              <div className="text-green-600">
+                                <span className="font-medium">Unloaded:</span> {format(new Date(dispatch.leftAt), "dd MMM HH:mm")}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <Badge
                             variant={
-                              dispatch.status === "LEFT"
+                              dispatch.status === "UNLOADED"
                                 ? "default"
                                 : dispatch.status === "ARRIVED"
                                 ? "secondary"
@@ -341,7 +371,7 @@ export default function SiteAccess() {
                             }
                             data-testid={`badge-status-${dispatch.id}`}
                           >
-                            {dispatch.status}
+                            {dispatch.status === "UNLOADED" ? "Unloaded" : dispatch.status === "ARRIVED" ? "Arrived" : "Dispatched"}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -363,10 +393,10 @@ export default function SiteAccess() {
                                 data-testid={`button-left-${dispatch.id}`}
                                 onClick={() => handleAcknowledge(dispatch, "left")}
                               >
-                                Mark Left
+                                Mark Unloaded
                               </Button>
                             )}
-                            {dispatch.status === "LEFT" && (
+                            {dispatch.status === "UNLOADED" && (
                               <span className="text-sm text-gray-500">Completed</span>
                             )}
                           </div>
@@ -375,9 +405,9 @@ export default function SiteAccess() {
                               Received By: {dispatch.arrivedByName}
                             </div>
                           )}
-                          {dispatch.leftByName && dispatch.status === "LEFT" && (
+                          {dispatch.leftByName && dispatch.status === "UNLOADED" && (
                             <div className="text-xs text-gray-500 mt-1">
-                              Truck Released By: {dispatch.leftByName}
+                              Released By: {dispatch.leftByName}
                             </div>
                           )}
                         </TableCell>
@@ -395,12 +425,12 @@ export default function SiteAccess() {
         <DialogContent data-testid="dialog-acknowledge">
           <DialogHeader>
             <DialogTitle>
-              {action === "arrived" ? "Mark as Arrived" : "Mark as Left"}
+              {action === "arrived" ? "Mark as Arrived" : "Mark as Unloaded"}
             </DialogTitle>
             <DialogDescription>
               {action === "arrived"
                 ? "Acknowledge that this delivery has arrived at your site"
-                : "Acknowledge that the vehicle has left your site"}
+                : "Acknowledge that the vehicle has been unloaded and left your site"}
             </DialogDescription>
           </DialogHeader>
 
@@ -415,6 +445,20 @@ export default function SiteAccess() {
                   <span className="text-gray-600">Vehicle:</span>
                   <span className="font-medium">{selectedDispatch.vehicleNo}</span>
                 </div>
+                {selectedDispatch.driverName && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Driver:</span>
+                    <span className="font-medium">{selectedDispatch.driverName}</span>
+                  </div>
+                )}
+                {selectedDispatch.driverMobile && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Driver Mobile:</span>
+                    <span className="font-medium text-blue-600">
+                      <a href={`tel:${selectedDispatch.driverMobile}`}>{selectedDispatch.driverMobile}</a>
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Load:</span>
                   <span className="font-medium">{Number(selectedDispatch.loadMT).toFixed(2)} MT</span>
@@ -422,13 +466,15 @@ export default function SiteAccess() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="receiverName">Receiver Name *</Label>
+                <Label htmlFor="receiverName">
+                  {action === "arrived" ? "Receiver Name *" : "Released By *"}
+                </Label>
                 <Input
                   id="receiverName"
                   data-testid="input-receiver-name"
                   value={receiverName}
                   onChange={(e) => setReceiverName(e.target.value.toUpperCase())}
-                  placeholder="Enter receiver name"
+                  placeholder="Enter name"
                   autoFocus
                   style={{ textTransform: "uppercase" }}
                 />
