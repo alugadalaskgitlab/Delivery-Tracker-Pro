@@ -1229,7 +1229,9 @@ export default function AdminDashboard() {
                         <TableHead>Site</TableHead>
                         <TableHead>Vehicle / Driver</TableHead>
                         <TableHead>Load (MT)</TableHead>
-                        <TableHead>Date</TableHead>
+                        <TableHead>Dispatched At</TableHead>
+                        <TableHead>Arrived At</TableHead>
+                        <TableHead>Unloaded At</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Notes</TableHead>
                         <TableHead>Actions</TableHead>
@@ -1238,7 +1240,7 @@ export default function AdminDashboard() {
                     <TableBody>
                       {dispatches.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center text-gray-500 py-8">
+                          <TableCell colSpan={11} className="text-center text-gray-500 py-8">
                             No dispatches yet
                           </TableCell>
                         </TableRow>
@@ -1260,7 +1262,13 @@ export default function AdminDashboard() {
                               </div>
                             </TableCell>
                             <TableCell>{Number(dispatch.loadMT).toFixed(2)}</TableCell>
-                            <TableCell>{format(new Date(dispatch.createdAt), "dd/MM/yyyy HH:mm")}</TableCell>
+                            <TableCell data-testid={`text-dispatched-at-${dispatch.id}`}>{format(new Date(dispatch.createdAt), "dd/MM/yyyy HH:mm")}</TableCell>
+                            <TableCell data-testid={`text-arrived-at-${dispatch.id}`} className="text-sm text-gray-600">
+                              {dispatch.arrivedAt ? format(new Date(dispatch.arrivedAt), "dd/MM/yyyy HH:mm") : <span className="text-gray-300">—</span>}
+                            </TableCell>
+                            <TableCell data-testid={`text-unloaded-at-${dispatch.id}`} className="text-sm text-gray-600">
+                              {dispatch.leftAt ? format(new Date(dispatch.leftAt), "dd/MM/yyyy HH:mm") : <span className="text-gray-300">—</span>}
+                            </TableCell>
                             <TableCell>
                               <Badge
                                 variant={
