@@ -5,6 +5,7 @@ import { io } from "socket.io-client";
 import {
   Bell,
   CheckCircle2,
+  Columns3,
   Copy,
   Download,
   Edit2,
@@ -99,6 +100,25 @@ type Dispatch = {
 
 const MIX_TYPES = ["DBM", "SDBC", "BC", "WMM", "GSB", "Other"];
 
+const REPORT_COLUMNS = [
+  { key: "challanNo",    label: "Challan No",       defaultEnabled: true  },
+  { key: "party",        label: "Party",             defaultEnabled: true  },
+  { key: "site",         label: "Site",              defaultEnabled: true  },
+  { key: "mixType",      label: "Mix Type",          defaultEnabled: true  },
+  { key: "vehicle",      label: "Vehicle",           defaultEnabled: true  },
+  { key: "driverName",   label: "Driver Name",       defaultEnabled: true  },
+  { key: "driverMobile", label: "Driver Mobile",     defaultEnabled: false },
+  { key: "loadMT",       label: "Load (MT)",         defaultEnabled: true  },
+  { key: "dispatchedAt", label: "Dispatched At",     defaultEnabled: true  },
+  { key: "status",       label: "Status",            defaultEnabled: true  },
+  { key: "arrivedAt",    label: "Arrived At",        defaultEnabled: false },
+  { key: "unloadedAt",   label: "Unloaded At",       defaultEnabled: false },
+  { key: "receivedBy",   label: "Received By",       defaultEnabled: false },
+  { key: "releasedBy",   label: "Truck Released By", defaultEnabled: false },
+] as const;
+
+type ReportColumnKey = typeof REPORT_COLUMNS[number]["key"];
+
 function slugify(s: string) {
   return s
     .toLowerCase()
@@ -129,6 +149,10 @@ export default function AdminDashboard() {
     panNo: "",
   });
   const [siteFilterReports, setSiteFilterReports] = useState<string>("all");
+  const [columnVisibility, setColumnVisibility] = useState<Record<ReportColumnKey, boolean>>(
+    () => Object.fromEntries(REPORT_COLUMNS.map(c => [c.key, c.defaultEnabled])) as Record<ReportColumnKey, boolean>
+  );
+  const [showColumnChooser, setShowColumnChooser] = useState(false);
 
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [adminPin, setAdminPin] = useState("");
@@ -747,6 +771,12 @@ export default function AdminDashboard() {
   }, [parties, dispatches]);
 
   function exportToExcel() {
+    const selectedCount = REPORT_COLUMNS.filter(c => columnVisibility[c.key]).length;
+    if (selectedCount === 0) {
+      toast({ title: "No columns selected", description: "Please select at least one column before exporting.", variant: "destructive" });
+      setShowColumnChooser(true);
+      return;
+    }
     const dateRangeStr = dateFrom || dateTo 
       ? `Date: ${dateFrom || "Start"} to ${dateTo || "Today"}`
       : `Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`;
@@ -795,25 +825,25 @@ export default function AdminDashboard() {
     }
     summaryRows.push([]);
     
-    const headers = ["Challan No", "Party", "Site", "Mix Type", "Vehicle", "Driver Name", "Driver Mobile", "Load (MT)", "Dispatched At", "Status", "Arrived At", "Unloaded At", "Received By", "Truck Released By"];
-    const rows = filteredDispatches.map((d) => {
-      return [
-        d.challanNo,
-        d.partyName,
-        d.siteName,
-        d.mixType || "",
-        d.vehicleNo,
-        d.driverName || "",
-        d.driverMobile || "",
-        Number(d.loadMT),
-        format(new Date(d.createdAt), "dd/MM/yyyy HH:mm"),
-        d.status,
-        d.arrivedAt ? format(new Date(d.arrivedAt), "dd/MM/yyyy HH:mm") : "",
-        d.leftAt ? format(new Date(d.leftAt), "dd/MM/yyyy HH:mm") : "",
-        d.arrivedByName || "",
-        d.leftByName || "",
-      ];
-    });
+    const allColumnDefs: { key: ReportColumnKey; header: string; value: (d: Dispatch) => string | number }[] = [
+      { key: "challanNo",    header: "Challan No",       value: d => d.challanNo },
+      { key: "party",        header: "Party",             value: d => d.partyName },
+      { key: "site",         header: "Site",              value: d => d.siteName },
+      { key: "mixType",      header: "Mix Type",          value: d => d.mixType || "" },
+      { key: "vehicle",      header: "Vehicle",           value: d => d.vehicleNo },
+      { key: "driverName",   header: "Driver Name",       value: d => d.driverName || "" },
+      { key: "driverMobile", header: "Driver Mobile",     value: d => d.driverMobile || "" },
+      { key: "loadMT",       header: "Load (MT)",         value: d => Number(d.loadMT) },
+      { key: "dispatchedAt", header: "Dispatched At",     value: d => format(new Date(d.createdAt), "dd/MM/yyyy HH:mm") },
+      { key: "status",       header: "Status",            value: d => d.status },
+      { key: "arrivedAt",    header: "Arrived At",        value: d => d.arrivedAt ? format(new Date(d.arrivedAt), "dd/MM/yyyy HH:mm") : "" },
+      { key: "unloadedAt",   header: "Unloaded At",       value: d => d.leftAt ? format(new Date(d.leftAt), "dd/MM/yyyy HH:mm") : "" },
+      { key: "receivedBy",   header: "Received By",       value: d => d.arrivedByName || "" },
+      { key: "releasedBy",   header: "Truck Released By", value: d => d.leftByName || "" },
+    ];
+    const visibleCols = allColumnDefs.filter(c => columnVisibility[c.key]);
+    const headers = visibleCols.map(c => c.header);
+    const rows = filteredDispatches.map(d => visibleCols.map(c => c.value(d)));
 
     const worksheet = XLSX.utils.aoa_to_sheet([...summaryRows, headers, ...rows]);
     const workbook = XLSX.utils.book_new();
@@ -826,6 +856,12 @@ export default function AdminDashboard() {
   }
 
   function handlePrint() {
+    const selectedCount = REPORT_COLUMNS.filter(c => columnVisibility[c.key]).length;
+    if (selectedCount === 0) {
+      toast({ title: "No columns selected", description: "Please select at least one column before printing.", variant: "destructive" });
+      setShowColumnChooser(true);
+      return;
+    }
     const dateRangeStr = dateFrom || dateTo 
       ? `Date: ${dateFrom || "Start"} to ${dateTo || "Today"}`
       : `Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`;
@@ -866,41 +902,33 @@ export default function AdminDashboard() {
           <table>
             <thead>
               <tr>
-                <th>Challan No</th>
-                <th>Party</th>
-                <th>Site</th>
-                <th>Mix Type</th>
-                <th>Vehicle</th>
-                <th>Driver Name</th>
-                <th>Driver Mobile</th>
-                <th>Load (MT)</th>
-                <th>Dispatched At</th>
-                <th>Status</th>
-                <th>Arrived At</th>
-                <th>Unloaded At</th>
-                <th>Received By</th>
-                <th>Released By</th>
+                ${(["challanNo","party","site","mixType","vehicle","driverName","driverMobile","loadMT","dispatchedAt","status","arrivedAt","unloadedAt","receivedBy","releasedBy"] as ReportColumnKey[])
+                  .filter(k => columnVisibility[k])
+                  .map(k => {
+                    const col = REPORT_COLUMNS.find(c => c.key === k)!;
+                    return `<th>${col.label}</th>`;
+                  }).join("")}
               </tr>
             </thead>
             <tbody>
-              ${filteredDispatches.map(d => `
-                <tr>
-                  <td>${d.challanNo}</td>
-                  <td>${d.partyName}</td>
-                  <td>${d.siteName}</td>
-                  <td>${d.mixType || "-"}</td>
-                  <td>${d.vehicleNo}</td>
-                  <td>${d.driverName || "-"}</td>
-                  <td>${d.driverMobile || "-"}</td>
-                  <td>${Number(d.loadMT).toFixed(2)}</td>
-                  <td>${format(new Date(d.createdAt), "dd/MM/yyyy HH:mm")}</td>
-                  <td>${d.status}</td>
-                  <td>${d.arrivedAt ? format(new Date(d.arrivedAt), "dd/MM/yyyy HH:mm") : "-"}</td>
-                  <td>${d.leftAt ? format(new Date(d.leftAt), "dd/MM/yyyy HH:mm") : "-"}</td>
-                  <td>${d.arrivedByName || "-"}</td>
-                  <td>${d.leftByName || "-"}</td>
-                </tr>
-              `).join("")}
+              ${filteredDispatches.map(d => {
+                const cells: string[] = [];
+                if (columnVisibility["challanNo"])    cells.push(`<td>${d.challanNo}</td>`);
+                if (columnVisibility["party"])        cells.push(`<td>${d.partyName}</td>`);
+                if (columnVisibility["site"])         cells.push(`<td>${d.siteName}</td>`);
+                if (columnVisibility["mixType"])      cells.push(`<td>${d.mixType || "-"}</td>`);
+                if (columnVisibility["vehicle"])      cells.push(`<td>${d.vehicleNo}</td>`);
+                if (columnVisibility["driverName"])   cells.push(`<td>${d.driverName || "-"}</td>`);
+                if (columnVisibility["driverMobile"]) cells.push(`<td>${d.driverMobile || "-"}</td>`);
+                if (columnVisibility["loadMT"])       cells.push(`<td>${Number(d.loadMT).toFixed(2)}</td>`);
+                if (columnVisibility["dispatchedAt"]) cells.push(`<td>${format(new Date(d.createdAt), "dd/MM/yyyy HH:mm")}</td>`);
+                if (columnVisibility["status"])       cells.push(`<td>${d.status}</td>`);
+                if (columnVisibility["arrivedAt"])    cells.push(`<td>${d.arrivedAt ? format(new Date(d.arrivedAt), "dd/MM/yyyy HH:mm") : "-"}</td>`);
+                if (columnVisibility["unloadedAt"])   cells.push(`<td>${d.leftAt ? format(new Date(d.leftAt), "dd/MM/yyyy HH:mm") : "-"}</td>`);
+                if (columnVisibility["receivedBy"])   cells.push(`<td>${d.arrivedByName || "-"}</td>`);
+                if (columnVisibility["releasedBy"])   cells.push(`<td>${d.leftByName || "-"}</td>`);
+                return `<tr>${cells.join("")}</tr>`;
+              }).join("")}
             </tbody>
           </table>
         </body>
@@ -1359,15 +1387,74 @@ export default function AdminDashboard() {
                     </Select>
                   </div>
                 </div>
-                <div className="flex justify-end gap-2 mt-4">
-                  <Button variant="outline" onClick={exportToExcel} data-testid="button-export-excel">
-                    <Download className="h-4 w-4 mr-2" />
-                    Export Excel
-                  </Button>
-                  <Button variant="outline" onClick={handlePrint} data-testid="button-print">
-                    <Printer className="h-4 w-4 mr-2" />
-                    Print
-                  </Button>
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowColumnChooser(v => !v)}
+                      data-testid="button-toggle-columns"
+                      className="text-sm text-gray-600 hover:text-gray-900 px-2"
+                    >
+                      <Columns3 className="h-4 w-4 mr-2" />
+                      Choose Columns
+                      <span className="ml-2 text-xs text-gray-400">
+                        ({REPORT_COLUMNS.filter(c => columnVisibility[c.key]).length}/{REPORT_COLUMNS.length} selected)
+                      </span>
+                    </Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={exportToExcel} data-testid="button-export-excel">
+                        <Download className="h-4 w-4 mr-2" />
+                        Export Excel
+                      </Button>
+                      <Button variant="outline" onClick={handlePrint} data-testid="button-print">
+                        <Printer className="h-4 w-4 mr-2" />
+                        Print
+                      </Button>
+                    </div>
+                  </div>
+                  {showColumnChooser && (
+                    <div className="border rounded-md p-4 bg-gray-50" data-testid="panel-column-chooser">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-gray-700">Select columns to include in export / print</span>
+                        <div className="flex gap-2">
+                          <button
+                            className="text-xs text-blue-600 hover:underline"
+                            onClick={() => setColumnVisibility(Object.fromEntries(REPORT_COLUMNS.map(c => [c.key, true])) as Record<ReportColumnKey, boolean>)}
+                            data-testid="button-select-all-columns"
+                          >
+                            Select all
+                          </button>
+                          <span className="text-gray-300">|</span>
+                          <button
+                            className="text-xs text-blue-600 hover:underline"
+                            onClick={() => setColumnVisibility(Object.fromEntries(REPORT_COLUMNS.map(c => [c.key, c.defaultEnabled])) as Record<ReportColumnKey, boolean>)}
+                            data-testid="button-reset-columns"
+                          >
+                            Reset defaults
+                          </button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {REPORT_COLUMNS.map(col => (
+                          <label
+                            key={col.key}
+                            className="flex items-center gap-2 cursor-pointer select-none"
+                            data-testid={`label-column-${col.key}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={columnVisibility[col.key]}
+                              onChange={e => setColumnVisibility(prev => ({ ...prev, [col.key]: e.target.checked }))}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 accent-blue-600"
+                              data-testid={`checkbox-column-${col.key}`}
+                            />
+                            <span className="text-sm text-gray-700">{col.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
