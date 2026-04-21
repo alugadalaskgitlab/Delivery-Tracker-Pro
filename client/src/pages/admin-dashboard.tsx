@@ -795,7 +795,7 @@ export default function AdminDashboard() {
     }
     summaryRows.push([]);
     
-    const headers = ["Challan No", "Party", "Site", "Mix Type", "Vehicle", "Load (MT)", "Date", "Status", "Received By", "Truck Released By"];
+    const headers = ["Challan No", "Party", "Site", "Mix Type", "Vehicle", "Driver Name", "Driver Mobile", "Load (MT)", "Dispatched At", "Status", "Arrived At", "Unloaded At", "Received By", "Truck Released By"];
     const rows = filteredDispatches.map((d) => {
       return [
         d.challanNo,
@@ -803,9 +803,13 @@ export default function AdminDashboard() {
         d.siteName,
         d.mixType || "",
         d.vehicleNo,
+        d.driverName || "",
+        d.driverMobile || "",
         Number(d.loadMT),
         format(new Date(d.createdAt), "dd/MM/yyyy HH:mm"),
         d.status,
+        d.arrivedAt ? format(new Date(d.arrivedAt), "dd/MM/yyyy HH:mm") : "",
+        d.leftAt ? format(new Date(d.leftAt), "dd/MM/yyyy HH:mm") : "",
         d.arrivedByName || "",
         d.leftByName || "",
       ];
@@ -867,9 +871,13 @@ export default function AdminDashboard() {
                 <th>Site</th>
                 <th>Mix Type</th>
                 <th>Vehicle</th>
+                <th>Driver Name</th>
+                <th>Driver Mobile</th>
                 <th>Load (MT)</th>
-                <th>Date</th>
+                <th>Dispatched At</th>
                 <th>Status</th>
+                <th>Arrived At</th>
+                <th>Unloaded At</th>
                 <th>Received By</th>
                 <th>Released By</th>
               </tr>
@@ -882,9 +890,13 @@ export default function AdminDashboard() {
                   <td>${d.siteName}</td>
                   <td>${d.mixType || "-"}</td>
                   <td>${d.vehicleNo}</td>
+                  <td>${d.driverName || "-"}</td>
+                  <td>${d.driverMobile || "-"}</td>
                   <td>${Number(d.loadMT).toFixed(2)}</td>
                   <td>${format(new Date(d.createdAt), "dd/MM/yyyy HH:mm")}</td>
                   <td>${d.status}</td>
+                  <td>${d.arrivedAt ? format(new Date(d.arrivedAt), "dd/MM/yyyy HH:mm") : "-"}</td>
+                  <td>${d.leftAt ? format(new Date(d.leftAt), "dd/MM/yyyy HH:mm") : "-"}</td>
                   <td>${d.arrivedByName || "-"}</td>
                   <td>${d.leftByName || "-"}</td>
                 </tr>
