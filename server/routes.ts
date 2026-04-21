@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword, requireAuth, requireAdmin, requirePlantOr
 import { insertPartySchema, insertDispatchSchema } from "@shared/schema";
 import { z } from "zod";
 import { getVapidPublicKey, broadcastNotification, sendSiteNotification } from "./push-notifications";
-import { triggerSiteNotification } from "./sms-notifications";
+import { triggerSiteNotification, resolveCredentials, sendTestSms } from "./sms-notifications";
 
 let io: SocketIOServer;
 
@@ -256,6 +256,82 @@ export async function registerRoutes(
       return res.json({ key, value });
     } catch (error) {
       console.error("Set setting error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/sms/config", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const [accountSid, authToken, fromNumber] = await Promise.all([
+        storage.getSetting("twilio_account_sid"),
+        storage.getSetting("twilio_auth_token"),
+        storage.getSetting("twilio_from_number"),
+      ]);
+      return res.json({
+        accountSid: accountSid || "",
+        authTokenSet: !!authToken,
+        fromNumber: fromNumber || "",
+      });
+    } catch (error) {
+      console.error("Get SMS config error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.put("/api/admin/sms/config", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const schema = z.object({
+        accountSid: z.string().min(1, "Account SID required"),
+        authToken: z.string().optional(),
+        fromNumber: z.string().min(1, "From Number required"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.errors[0].message });
+      }
+      const { accountSid, authToken, fromNumber } = parsed.data;
+      const saves: Promise<void>[] = [
+        storage.setSetting("twilio_account_sid", accountSid.trim()),
+        storage.setSetting("twilio_from_number", fromNumber.trim()),
+      ];
+      if (authToken && authToken.trim()) {
+        saves.push(storage.setSetting("twilio_auth_token", authToken.trim()));
+      }
+      await Promise.all(saves);
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Save SMS config error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/sms/test", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const schema = z.object({
+        toNumber: z.string().min(1, "Recipient number required"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.errors[0].message });
+      }
+      const { toNumber } = parsed.data;
+
+      const creds = await resolveCredentials();
+      if (!creds) {
+        return res.status(400).json({
+          error:
+            "Twilio credentials are not configured. Please save your Account SID, Auth Token, and From Number first.",
+        });
+      }
+
+      const result = await sendTestSms(creds, toNumber);
+      if (result.success) {
+        return res.json({ success: true, message: result.message });
+      } else {
+        return res.status(502).json({ success: false, error: result.message });
+      }
+    } catch (error) {
+      console.error("SMS test error:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -676,7 +752,7 @@ export async function registerRoutes(
           loadMT,
           notifyMobile: site.notifyMobile,
           timestamp: new Date(),
-        });
+        }).catch((err) => console.error("[SMS] Dispatch notification error:", err));
       }
 
       return res.json(dispatch);
@@ -831,7 +907,7 @@ export async function registerRoutes(
           loadMT: String(dispatch.loadMT),
           notifyMobile: arrSite.notifyMobile,
           timestamp: new Date(),
-        });
+        }).catch((err) => console.error("[SMS] Arrived notification error:", err));
       }
 
       return res.json(updated);
@@ -898,7 +974,7 @@ export async function registerRoutes(
           loadMT: String(dispatch.loadMT),
           notifyMobile: leftSite.notifyMobile,
           timestamp: new Date(),
-        });
+        }).catch((err) => console.error("[SMS] Unloaded notification error:", err));
       }
 
       return res.json(updated);
@@ -1105,7 +1181,7 @@ export async function registerRoutes(
           loadMT: String(dispatch.loadMT),
           notifyMobile: arrSite.notifyMobile,
           timestamp: new Date(),
-        });
+        }).catch((err) => console.error("[SMS] Site arrived notification error:", err));
       }
 
       return res.json(updated);
@@ -1186,7 +1262,7 @@ export async function registerRoutes(
           loadMT: String(dispatch.loadMT),
           notifyMobile: leftSite.notifyMobile,
           timestamp: new Date(),
-        });
+        }).catch((err) => console.error("[SMS] Site left notification error:", err));
       }
 
       return res.json(updated);

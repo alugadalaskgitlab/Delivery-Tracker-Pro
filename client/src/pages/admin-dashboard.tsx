@@ -9,11 +9,14 @@ import {
   Copy,
   Download,
   Edit2,
+  Eye,
+  EyeOff,
   FileText,
   Filter,
   Home,
   Link2,
   MapPin,
+  MessageSquare,
   Plus,
   Printer,
   Search,
@@ -160,6 +163,16 @@ export default function AdminDashboard() {
   const [ownerPin, setOwnerPin] = useState("");
   const [currentOwnerPinForSettings, setCurrentOwnerPinForSettings] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
+
+  const [smsAccountSid, setSmsAccountSid] = useState("");
+  const [smsAuthToken, setSmsAuthToken] = useState("");
+  const [smsFromNumber, setSmsFromNumber] = useState("");
+  const [smsAuthTokenSet, setSmsAuthTokenSet] = useState(false);
+  const [showSmsAuthToken, setShowSmsAuthToken] = useState(false);
+  const [smsTestNumber, setSmsTestNumber] = useState("");
+  const [savingSmsConfig, setSavingSmsConfig] = useState(false);
+  const [sendingTestSms, setSendingTestSms] = useState(false);
+  const [smsConfigDirty, setSmsConfigDirty] = useState(false);
   const [ownerPinInput, setOwnerPinInput] = useState("");
   const [showOwnerPinDialog, setShowOwnerPinDialog] = useState(false);
   const [pendingDeleteAction, setPendingDeleteAction] = useState<{ type: "party" | "dispatch"; id: string } | null>(null);
@@ -632,6 +645,84 @@ export default function AdminDashboard() {
       toast({ title: "Error", description: "Failed to save settings", variant: "destructive" });
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function fetchSmsConfig() {
+    try {
+      const res = await fetch("/api/admin/sms/config");
+      if (res.ok) {
+        const data = await res.json();
+        setSmsAccountSid(data.accountSid || "");
+        setSmsFromNumber(data.fromNumber || "");
+        setSmsAuthTokenSet(data.authTokenSet || false);
+        setSmsAuthToken("");
+        setSmsConfigDirty(false);
+      }
+    } catch {}
+  }
+
+  async function handleSaveSmsConfig() {
+    if (!smsAccountSid.trim() || !smsFromNumber.trim()) {
+      toast({ title: "Error", description: "Account SID and From Number are required", variant: "destructive" });
+      return;
+    }
+    if (!smsAuthToken.trim() && !smsAuthTokenSet) {
+      toast({ title: "Error", description: "Auth Token is required", variant: "destructive" });
+      return;
+    }
+    setSavingSmsConfig(true);
+    try {
+      const payload: Record<string, string> = {
+        accountSid: smsAccountSid.trim(),
+        fromNumber: smsFromNumber.trim(),
+      };
+      if (smsAuthToken.trim()) {
+        payload.authToken = smsAuthToken.trim();
+      }
+      const res = await fetch("/api/admin/sms/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        toast({ title: "Saved", description: "SMS configuration saved successfully" });
+        setSmsAuthToken("");
+        setSmsAuthTokenSet(true);
+        setSmsConfigDirty(false);
+      } else {
+        const data = await res.json();
+        toast({ title: "Error", description: data.error || "Failed to save configuration", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Failed to save SMS configuration", variant: "destructive" });
+    } finally {
+      setSavingSmsConfig(false);
+    }
+  }
+
+  async function handleTestSms() {
+    if (!smsTestNumber.trim()) {
+      toast({ title: "Error", description: "Please enter a phone number to send the test message to", variant: "destructive" });
+      return;
+    }
+    setSendingTestSms(true);
+    try {
+      const res = await fetch("/api/admin/sms/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toNumber: smsTestNumber.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast({ title: "Test sent!", description: data.message });
+      } else {
+        toast({ title: "Test failed", description: data.error || "Failed to send test message", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Failed to send test message", variant: "destructive" });
+    } finally {
+      setSendingTestSms(false);
     }
   }
 
@@ -1795,13 +1886,19 @@ export default function AdminDashboard() {
           setPlantPin("");
           setOwnerPin("");
           setCurrentOwnerPinForSettings("");
+          setSmsAuthToken("");
+          setSmsTestNumber("");
+          setShowSmsAuthToken(false);
+          setSmsConfigDirty(false);
+        } else {
+          fetchSmsConfig();
         }
         setShowSettingsDialog(open);
       }}>
-        <DialogContent data-testid="dialog-settings">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-settings">
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
-            <DialogDescription>Change PINs (Owner verification required)</DialogDescription>
+            <DialogDescription>Manage PINs and SMS/WhatsApp alert configuration</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2 border-b pb-4">
@@ -1879,12 +1976,102 @@ export default function AdminDashboard() {
               Send Test Notification
             </Button>
           </div>
+          <Separator />
+          <div className="space-y-3">
+            <div>
+              <Label className="font-semibold">SMS / WhatsApp Alerts</Label>
+              <p className="text-xs text-muted-foreground mt-1">Twilio credentials used for dispatch notifications. DB values override environment variables.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="smsAccountSid">Account SID</Label>
+              <Input
+                id="smsAccountSid"
+                value={smsAccountSid}
+                onChange={(e) => { setSmsAccountSid(e.target.value); setSmsConfigDirty(true); }}
+                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                data-testid="input-sms-account-sid"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="smsAuthToken">Auth Token</Label>
+              <div className="relative">
+                <Input
+                  id="smsAuthToken"
+                  type={showSmsAuthToken ? "text" : "password"}
+                  value={smsAuthToken}
+                  onChange={(e) => { setSmsAuthToken(e.target.value); setSmsConfigDirty(true); }}
+                  placeholder={smsAuthTokenSet ? "••••••••••••••••••••••• (already set)" : "Enter Auth Token"}
+                  className="pr-10"
+                  data-testid="input-sms-auth-token"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                  onClick={() => setShowSmsAuthToken(!showSmsAuthToken)}
+                  data-testid="button-toggle-sms-auth-token"
+                >
+                  {showSmsAuthToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              {smsAuthTokenSet && !smsAuthToken && (
+                <p className="text-xs text-muted-foreground">Leave blank to keep the existing token.</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="smsFromNumber">From Number</Label>
+              <Input
+                id="smsFromNumber"
+                value={smsFromNumber}
+                onChange={(e) => { setSmsFromNumber(e.target.value); setSmsConfigDirty(true); }}
+                placeholder="+1234567890 or whatsapp:+1234567890"
+                data-testid="input-sms-from-number"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSaveSmsConfig}
+              disabled={savingSmsConfig}
+              data-testid="button-save-sms-config"
+            >
+              <MessageSquare className="h-4 w-4 mr-2" />
+              {savingSmsConfig ? "Saving..." : "Save SMS Configuration"}
+            </Button>
+            <Separator className="my-1" />
+            <div className="space-y-2">
+              <Label htmlFor="smsTestNumber">Send Test Message To</Label>
+              {smsConfigDirty && (
+                <p className="text-xs text-amber-600">Save your configuration above before sending a test.</p>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  id="smsTestNumber"
+                  value={smsTestNumber}
+                  onChange={(e) => setSmsTestNumber(e.target.value)}
+                  placeholder="9876543210 or +91..."
+                  className="flex-1"
+                  data-testid="input-sms-test-number"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestSms}
+                  disabled={sendingTestSms || !smsTestNumber.trim()}
+                  data-testid="button-send-test-sms"
+                >
+                  {sendingTestSms ? "Sending..." : "Send Test"}
+                </Button>
+              </div>
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowSettingsDialog(false)}>
               Cancel
             </Button>
             <Button onClick={handleSaveSettings} disabled={savingSettings || !currentOwnerPinForSettings} data-testid="button-save-settings">
-              {savingSettings ? "Saving..." : "Save"}
+              {savingSettings ? "Saving..." : "Save PINs"}
             </Button>
           </DialogFooter>
         </DialogContent>

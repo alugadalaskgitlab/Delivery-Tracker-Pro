@@ -1,4 +1,5 @@
 import twilio from "twilio";
+import { storage } from "./storage";
 
 export type SmsEvent = "DISPATCHED" | "ARRIVED" | "UNLOADED";
 
@@ -12,6 +13,12 @@ export interface SmsNotificationPayload {
   loadMT: string;
   notifyMobile: string;
   timestamp: Date;
+}
+
+export interface TwilioCredentials {
+  accountSid: string;
+  authToken: string;
+  fromNumber: string;
 }
 
 function buildMessage(payload: SmsNotificationPayload): string {
@@ -49,7 +56,7 @@ function buildMessage(payload: SmsNotificationPayload): string {
  *
  * Digits-only stripping of spaces/hyphens happens before all checks.
  */
-function normalizePhoneNumber(raw: string): string {
+export function normalizePhoneNumber(raw: string): string {
   if (raw.startsWith("whatsapp:")) return raw;
 
   const stripped = raw.replace(/[\s\-().]/g, "");
@@ -67,12 +74,26 @@ function normalizePhoneNumber(raw: string): string {
   return stripped;
 }
 
-function getTwilioClient(): ReturnType<typeof twilio> | null {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
+/**
+ * Resolve Twilio credentials: DB-stored values take priority over env vars.
+ */
+export async function resolveCredentials(): Promise<TwilioCredentials | null> {
+  const [dbSid, dbToken, dbFrom] = await Promise.all([
+    storage.getSetting("twilio_account_sid"),
+    storage.getSetting("twilio_auth_token"),
+    storage.getSetting("twilio_from_number"),
+  ]);
 
-  if (!accountSid || !authToken) return null;
+  const accountSid = dbSid || process.env.TWILIO_ACCOUNT_SID;
+  const authToken = dbToken || process.env.TWILIO_AUTH_TOKEN;
+  const fromNumber = dbFrom || process.env.TWILIO_FROM_NUMBER;
 
+  if (!accountSid || !authToken || !fromNumber) return null;
+
+  return { accountSid, authToken, fromNumber };
+}
+
+function buildTwilioClient(accountSid: string, authToken: string): ReturnType<typeof twilio> {
   return twilio(accountSid, authToken);
 }
 
@@ -82,16 +103,11 @@ async function sendViaTwilio(
   to: string,
   body: string
 ): Promise<void> {
-  try {
-    const msg = await client.messages.create({ from, to, body });
-    console.log(`[SMS] Sent to ${to} (SID: ${msg.sid})`);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[SMS] Failed to send to ${to}: ${message}`);
-  }
+  const msg = await client.messages.create({ from, to, body });
+  console.log(`[SMS] Sent to ${to} (SID: ${msg.sid})`);
 }
 
-export function triggerSiteNotification(payload: SmsNotificationPayload): void {
+export async function triggerSiteNotification(payload: SmsNotificationPayload): Promise<void> {
   const numbers = payload.notifyMobile
     .split(",")
     .map((n) => n.trim())
@@ -99,12 +115,10 @@ export function triggerSiteNotification(payload: SmsNotificationPayload): void {
 
   if (numbers.length === 0) return;
 
-  const from = process.env.TWILIO_FROM_NUMBER;
-  const client = getTwilioClient();
-
   const body = buildMessage(payload);
+  const creds = await resolveCredentials();
 
-  if (!client || !from) {
+  if (!creds) {
     for (const number of numbers) {
       console.log(
         `[SMS-HOOK] Event: ${payload.event} | To: ${number} | Challan: ${payload.challanNo} | Site: ${payload.siteName} | Vehicle: ${payload.vehicleNo} | Load: ${payload.loadMT} MT | Driver: ${payload.driverName || "N/A"} (${payload.driverMobile || "N/A"}) | Time: ${payload.timestamp.toISOString()}`
@@ -113,10 +127,39 @@ export function triggerSiteNotification(payload: SmsNotificationPayload): void {
     return;
   }
 
+  const client = buildTwilioClient(creds.accountSid, creds.authToken);
+
   for (const number of numbers) {
     const normalized = normalizePhoneNumber(number);
-    sendViaTwilio(client, from, normalized, body).catch((err) => {
-      console.error(`[SMS] Unexpected error for ${normalized}:`, err);
+    sendViaTwilio(client, creds.fromNumber, normalized, body).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[SMS] Failed to send to ${normalized}: ${message}`);
     });
+  }
+}
+
+/**
+ * Send a single test SMS using explicit credentials.
+ * Returns an object with success status and a message/SID.
+ */
+export async function sendTestSms(
+  creds: TwilioCredentials,
+  toNumber: string
+): Promise<{ success: boolean; message: string }> {
+  const normalized = normalizePhoneNumber(toNumber);
+  const body =
+    "[DispatchPro Test] SMS configuration is working correctly. You can now receive dispatch notifications.";
+
+  try {
+    const client = buildTwilioClient(creds.accountSid, creds.authToken);
+    const msg = await client.messages.create({
+      from: creds.fromNumber,
+      to: normalized,
+      body,
+    });
+    return { success: true, message: `Message sent successfully (SID: ${msg.sid})` };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, message };
   }
 }
