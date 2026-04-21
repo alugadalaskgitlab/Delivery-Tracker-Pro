@@ -922,11 +922,9 @@ export async function registerRoutes(
           return res.status(401).json({ valid: false, error: "This site link is no longer valid. Please contact the plant for a new link." });
         }
         const dispatches = await storage.getDispatchesBySite(site.id);
-        const receivedMT = dispatches
-          .filter(d => d.status === "UNLOADED")
-          .reduce((sum, d) => sum + Number(d.loadMT), 0);
-        const totalDispatched = dispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
         const orderedMT = Number(site.orderedMT || 0);
+        const dispatchedMT = dispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
+        const balanceMT = orderedMT - dispatchedMT;
         return res.json({
           valid: true,
           partyName: party.partyName,
@@ -935,9 +933,8 @@ export async function registerRoutes(
           siteId: site.id,
           siteName: site.siteName,
           orderedMT: orderedMT.toFixed(2),
-          totalRequiredMT: totalDispatched.toFixed(2),
-          receivedMT: receivedMT.toFixed(2),
-          balanceMT: (orderedMT - totalDispatched).toFixed(2),
+          dispatchedMT: dispatchedMT.toFixed(2),
+          balanceMT: balanceMT.toFixed(2),
         });
       }
 
@@ -948,38 +945,36 @@ export async function registerRoutes(
           return res.status(401).json({ valid: false, error: "Access closed - party/order is not active" });
         }
         const sites = await storage.getSitesByParty(party.id);
-        const totalOrderedMT = sites.reduce((sum, s) => sum + Number(s.orderedMT || 0), 0);
+        const orderedMT = sites.reduce((sum, s) => sum + Number(s.orderedMT || 0), 0);
         const dispatches = await storage.getDispatchesByParty(party.id);
-        const receivedMT = dispatches
-          .filter(d => d.status === "UNLOADED")
-          .reduce((sum, d) => sum + Number(d.loadMT), 0);
+        const dispatchedMT = dispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
+        const balanceMT = orderedMT - dispatchedMT;
         return res.json({
           valid: true,
           partyName: party.partyName,
           partyCode: party.partyCode,
           partyId: party.id,
-          totalRequiredMT: totalOrderedMT.toFixed(2),
-          receivedMT: receivedMT.toFixed(2),
-          balanceMT: (totalOrderedMT - receivedMT).toFixed(2),
+          orderedMT: orderedMT.toFixed(2),
+          dispatchedMT: dispatchedMT.toFixed(2),
+          balanceMT: balanceMT.toFixed(2),
         });
       }
 
       const partyByAccess = await storage.getPartyByAccessId(siteToken);
       if (partyByAccess && partyByAccess.status === "ACTIVE") {
         const sites = await storage.getSitesByParty(partyByAccess.id);
-        const totalOrderedMT = sites.reduce((sum, s) => sum + Number(s.orderedMT || 0), 0);
+        const orderedMT = sites.reduce((sum, s) => sum + Number(s.orderedMT || 0), 0);
         const dispatches = await storage.getDispatchesByParty(partyByAccess.id);
-        const receivedMT = dispatches
-          .filter(d => d.status === "UNLOADED")
-          .reduce((sum, d) => sum + Number(d.loadMT), 0);
+        const dispatchedMT = dispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
+        const balanceMT = orderedMT - dispatchedMT;
         return res.json({
           valid: true,
           partyName: partyByAccess.partyName,
           partyCode: partyByAccess.partyCode,
           partyId: partyByAccess.id,
-          totalRequiredMT: totalOrderedMT.toFixed(2),
-          receivedMT: receivedMT.toFixed(2),
-          balanceMT: (totalOrderedMT - receivedMT).toFixed(2),
+          orderedMT: orderedMT.toFixed(2),
+          dispatchedMT: dispatchedMT.toFixed(2),
+          balanceMT: balanceMT.toFixed(2),
         });
       }
 

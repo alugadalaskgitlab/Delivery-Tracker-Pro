@@ -50,8 +50,8 @@ type TokenValidation = {
   partyCode?: string;
   siteId?: string;
   siteName?: string;
-  totalRequiredMT?: string;
-  receivedMT?: string;
+  orderedMT?: string;
+  dispatchedMT?: string;
   balanceMT?: string;
   error?: string;
 };
@@ -237,13 +237,13 @@ export default function SiteAccess() {
               <div>
                 <p className="text-sm text-gray-600 font-medium">Total Ordered</p>
                 <p className="text-2xl font-bold text-blue-700" data-testid="qty-ordered">
-                  {Number(validation.orderedMT || validation.totalRequiredMT || 0).toFixed(2)} MT
+                  {Number(validation.orderedMT || 0).toFixed(2)} MT
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 font-medium">Dispatched</p>
                 <p className="text-2xl font-bold text-green-700" data-testid="qty-dispatched">
-                  {Number(validation.totalRequiredMT || 0).toFixed(2)} MT
+                  {Number(validation.dispatchedMT || 0).toFixed(2)} MT
                 </p>
               </div>
               <div>
