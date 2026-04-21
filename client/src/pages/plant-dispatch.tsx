@@ -489,7 +489,9 @@ export default function PlantDispatch() {
                             <div className="text-xs text-gray-600">{dispatch.driverName}</div>
                           )}
                           {dispatch.driverMobile && (
-                            <div className="text-xs text-blue-600">{dispatch.driverMobile}</div>
+                            <div className="text-xs text-blue-600">
+                              <a href={`tel:${dispatch.driverMobile}`}>{dispatch.driverMobile}</a>
+                            </div>
                           )}
                         </div>
                       </TableCell>
