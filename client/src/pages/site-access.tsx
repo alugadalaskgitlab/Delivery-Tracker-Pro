@@ -221,10 +221,12 @@ export default function SiteAccess() {
             <NotificationToggle role="SITE" siteId={validation.siteId} />
           </div>
           <div className="text-center">
-            <span className="text-sm font-medium text-gray-600">Site Dispatch Tracking</span>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Site Dispatch Tracking</p>
+            <h1 className="text-lg font-bold text-gray-900">
+              {validation.siteName || validation.partyName}
+            </h1>
             <p className="text-sm text-gray-500">
               {validation.partyName} ({validation.partyCode})
-              {validation.siteName && <span className="ml-1 font-medium">- {validation.siteName}</span>}
             </p>
           </div>
         </div>
