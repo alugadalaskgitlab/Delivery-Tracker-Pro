@@ -2258,7 +2258,7 @@ export default function AdminDashboard() {
                         variant="ghost"
                         onClick={() => {
                           const url = `${window.location.origin}/site/${site.accessId}`;
-                          const text = `${site.siteName} — ${url}`;
+                          const text = `${site.siteName || "Site"} — ${url}`;
                           navigator.clipboard.writeText(text).then(() => {
                             toast({ title: "Link copied", description: text });
                           });

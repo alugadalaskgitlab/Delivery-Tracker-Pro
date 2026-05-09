@@ -225,9 +225,13 @@ export default function SiteAccess() {
             <h1 className="text-lg font-bold text-gray-900">
               {validation.siteName || validation.partyName}
             </h1>
-            <p className="text-sm text-gray-500">
-              {validation.partyName} ({validation.partyCode})
-            </p>
+            {validation.siteName ? (
+              <p className="text-sm text-gray-500">
+                {validation.partyName} ({validation.partyCode})
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500">{validation.partyCode}</p>
+            )}
           </div>
         </div>
       </header>
