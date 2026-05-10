@@ -3,8 +3,11 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { io } from "socket.io-client";
 import {
+  ArrowUpDown,
   Bell,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Columns3,
   Copy,
   Download,
@@ -152,6 +155,15 @@ export default function AdminDashboard() {
     panNo: "",
   });
   const [siteFilterReports, setSiteFilterReports] = useState<string>("all");
+
+  const [dispatchSearch, setDispatchSearch] = useState("");
+  const [dispatchStatusFilter, setDispatchStatusFilter] = useState<string>("all");
+  const [dispatchPartyFilter, setDispatchPartyFilter] = useState<string>("all");
+  const [dispatchDateFrom, setDispatchDateFrom] = useState("");
+  const [dispatchDateTo, setDispatchDateTo] = useState("");
+  const [dispatchSortField, setDispatchSortField] = useState<"createdAt" | "arrivedAt" | "leftAt" | "challanNo" | "loadMT">("createdAt");
+  const [dispatchSortDir, setDispatchSortDir] = useState<"asc" | "desc">("desc");
+
   const [columnVisibility, setColumnVisibility] = useState<Record<ReportColumnKey, boolean>>(
     () => Object.fromEntries(REPORT_COLUMNS.map(c => [c.key, c.defaultEnabled])) as Record<ReportColumnKey, boolean>
   );
@@ -853,6 +865,76 @@ export default function AdminDashboard() {
     setSiteFilterReports("all");
   }, [partyFilter]);
 
+  const filteredDispatchesTab = useMemo(() => {
+    let result = dispatches.filter((d) => {
+      const q = dispatchSearch.toLowerCase();
+      const matchesSearch =
+        !dispatchSearch ||
+        d.challanNo.toLowerCase().includes(q) ||
+        d.partyName.toLowerCase().includes(q) ||
+        d.vehicleNo.toLowerCase().includes(q) ||
+        (d.driverName || "").toLowerCase().includes(q) ||
+        (d.siteName || "").toLowerCase().includes(q);
+
+      const matchesStatus = dispatchStatusFilter === "all" || d.status === dispatchStatusFilter;
+      const matchesParty = dispatchPartyFilter === "all" || d.partyId === dispatchPartyFilter;
+
+      let matchesDate = true;
+      if (dispatchDateFrom) {
+        matchesDate = matchesDate && new Date(d.createdAt) >= new Date(dispatchDateFrom);
+      }
+      if (dispatchDateTo) {
+        matchesDate = matchesDate && new Date(d.createdAt) <= new Date(dispatchDateTo + "T23:59:59");
+      }
+
+      return matchesSearch && matchesStatus && matchesParty && matchesDate;
+    });
+
+    result = [...result].sort((a, b) => {
+      let aVal: string | number | null = null;
+      let bVal: string | number | null = null;
+      if (dispatchSortField === "createdAt") {
+        aVal = new Date(a.createdAt).getTime();
+        bVal = new Date(b.createdAt).getTime();
+      } else if (dispatchSortField === "arrivedAt") {
+        aVal = a.arrivedAt ? new Date(a.arrivedAt).getTime() : -Infinity;
+        bVal = b.arrivedAt ? new Date(b.arrivedAt).getTime() : -Infinity;
+      } else if (dispatchSortField === "leftAt") {
+        aVal = a.leftAt ? new Date(a.leftAt).getTime() : -Infinity;
+        bVal = b.leftAt ? new Date(b.leftAt).getTime() : -Infinity;
+      } else if (dispatchSortField === "challanNo") {
+        aVal = a.challanNo;
+        bVal = b.challanNo;
+      } else if (dispatchSortField === "loadMT") {
+        aVal = Number(a.loadMT);
+        bVal = Number(b.loadMT);
+      }
+      if (aVal === null) aVal = "";
+      if (bVal === null) bVal = "";
+      if (aVal < bVal) return dispatchSortDir === "asc" ? -1 : 1;
+      if (aVal > bVal) return dispatchSortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [dispatches, dispatchSearch, dispatchStatusFilter, dispatchPartyFilter, dispatchDateFrom, dispatchDateTo, dispatchSortField, dispatchSortDir]);
+
+  function toggleDispatchSort(field: typeof dispatchSortField) {
+    if (dispatchSortField === field) {
+      setDispatchSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setDispatchSortField(field);
+      setDispatchSortDir("desc");
+    }
+  }
+
+  function DispatchSortIcon({ field }: { field: typeof dispatchSortField }) {
+    if (dispatchSortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 text-gray-400" />;
+    return dispatchSortDir === "asc"
+      ? <ChevronUp className="h-3 w-3 ml-1 text-blue-500" />
+      : <ChevronDown className="h-3 w-3 ml-1 text-blue-500" />;
+  }
+
   const summaryStats = useMemo(() => {
     const totalParties = parties.length;
     const activeParties = parties.filter((p) => p.status === "ACTIVE").length;
@@ -1305,9 +1387,100 @@ export default function AdminDashboard() {
           <TabsContent value="dispatches" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Recent Dispatches</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Filter className="h-5 w-5" />
+                  Filters
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <div>
+                    <Label>Search</Label>
+                    <Input
+                      placeholder="Challan, party, vehicle, site..."
+                      value={dispatchSearch}
+                      onChange={(e) => setDispatchSearch(e.target.value)}
+                      data-testid="input-dispatch-search"
+                    />
+                  </div>
+                  <div>
+                    <Label>Date From</Label>
+                    <Input
+                      type="date"
+                      value={dispatchDateFrom}
+                      onChange={(e) => setDispatchDateFrom(e.target.value)}
+                      data-testid="input-dispatch-date-from"
+                    />
+                  </div>
+                  <div>
+                    <Label>Date To</Label>
+                    <Input
+                      type="date"
+                      value={dispatchDateTo}
+                      onChange={(e) => setDispatchDateTo(e.target.value)}
+                      data-testid="input-dispatch-date-to"
+                    />
+                  </div>
+                  <div>
+                    <Label>Status</Label>
+                    <Select value={dispatchStatusFilter} onValueChange={setDispatchStatusFilter}>
+                      <SelectTrigger data-testid="select-dispatch-status">
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="DISPATCHED">Dispatched</SelectItem>
+                        <SelectItem value="ARRIVED">Arrived</SelectItem>
+                        <SelectItem value="UNLOADED">Unloaded</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Party</Label>
+                    <Select value={dispatchPartyFilter} onValueChange={setDispatchPartyFilter}>
+                      <SelectTrigger data-testid="select-dispatch-party">
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Parties</SelectItem>
+                        {parties.map((party) => (
+                          <SelectItem key={party.id} value={party.id}>{party.partyName} ({party.partyCode})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {(dispatchSearch || dispatchStatusFilter !== "all" || dispatchPartyFilter !== "all" || dispatchDateFrom || dispatchDateTo) && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="text-sm text-gray-500">
+                      Showing {filteredDispatchesTab.length} of {dispatches.length} dispatches
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-7 px-2 text-gray-500 hover:text-gray-700"
+                      onClick={() => {
+                        setDispatchSearch("");
+                        setDispatchStatusFilter("all");
+                        setDispatchPartyFilter("all");
+                        setDispatchDateFrom("");
+                        setDispatchDateTo("");
+                      }}
+                      data-testid="button-clear-dispatch-filters"
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      Clear filters
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Dispatches</CardTitle>
                 <CardDescription>
-                  {dispatches.length} total dispatches — Edit or delete entries with Owner PIN
+                  {filteredDispatchesTab.length} of {dispatches.length} dispatches — Edit or delete entries with Owner PIN
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1315,28 +1488,58 @@ export default function AdminDashboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Challan No</TableHead>
+                        <TableHead
+                          className="cursor-pointer select-none hover:text-blue-600"
+                          onClick={() => toggleDispatchSort("challanNo")}
+                          data-testid="th-challan-no"
+                        >
+                          <span className="flex items-center">Challan No<DispatchSortIcon field="challanNo" /></span>
+                        </TableHead>
                         <TableHead>Party</TableHead>
                         <TableHead>Site</TableHead>
                         <TableHead>Vehicle / Driver</TableHead>
-                        <TableHead>Load (MT)</TableHead>
-                        <TableHead>Dispatched At</TableHead>
-                        <TableHead>Arrived At</TableHead>
-                        <TableHead>Unloaded At</TableHead>
+                        <TableHead
+                          className="cursor-pointer select-none hover:text-blue-600"
+                          onClick={() => toggleDispatchSort("loadMT")}
+                          data-testid="th-load-mt"
+                        >
+                          <span className="flex items-center">Load (MT)<DispatchSortIcon field="loadMT" /></span>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer select-none hover:text-blue-600"
+                          onClick={() => toggleDispatchSort("createdAt")}
+                          data-testid="th-dispatched-at"
+                        >
+                          <span className="flex items-center">Dispatched At<DispatchSortIcon field="createdAt" /></span>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer select-none hover:text-blue-600"
+                          onClick={() => toggleDispatchSort("arrivedAt")}
+                          data-testid="th-arrived-at"
+                        >
+                          <span className="flex items-center">Arrived At<DispatchSortIcon field="arrivedAt" /></span>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer select-none hover:text-blue-600"
+                          onClick={() => toggleDispatchSort("leftAt")}
+                          data-testid="th-unloaded-at"
+                        >
+                          <span className="flex items-center">Unloaded At<DispatchSortIcon field="leftAt" /></span>
+                        </TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Notes</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {dispatches.length === 0 ? (
+                      {filteredDispatchesTab.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={11} className="text-center text-gray-500 py-8">
-                            No dispatches yet
+                            {dispatches.length === 0 ? "No dispatches yet" : "No dispatches match the current filters"}
                           </TableCell>
                         </TableRow>
                       ) : (
-                        dispatches.map((dispatch) => (
+                        filteredDispatchesTab.map((dispatch) => (
                           <TableRow key={dispatch.id} data-testid={`row-dispatch-main-${dispatch.id}`}>
                             <TableCell className="font-medium">{dispatch.challanNo}</TableCell>
                             <TableCell>{dispatch.partyName}</TableCell>
