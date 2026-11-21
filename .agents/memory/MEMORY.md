@@ -1,0 +1,1 @@
+- [Project secret handling](project-secret-handling.md) — Store credentials only in Replit Secrets; never put values in `.replit`, source, reports, or commits.
