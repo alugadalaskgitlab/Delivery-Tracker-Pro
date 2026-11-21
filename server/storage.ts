@@ -169,6 +169,11 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
+  async getDispatchByExternalRef(externalRef: string): Promise<Dispatch | undefined> {
+    const result = await db.select().from(dispatches).where(eq(dispatches.externalRef, externalRef)).limit(1);
+    return result[0];
+  }
+
   async getDispatchesByParty(partyId: string): Promise<Dispatch[]> {
     return await db.select().from(dispatches).where(eq(dispatches.partyId, partyId)).orderBy(desc(dispatches.createdAt));
   }

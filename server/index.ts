@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { storage } from "./storage";
+import { startSitePulseOutboxWorker } from "./sitepulse-outbox";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -78,6 +79,7 @@ app.use((req, res, next) => {
   }
 
   await registerRoutes(httpServer, app);
+  startSitePulseOutboxWorker();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

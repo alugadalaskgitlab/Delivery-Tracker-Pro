@@ -76,6 +76,8 @@ export type Party = typeof parties.$inferSelect;
 export const dispatches = pgTable("dispatches", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   challanNo: text("challan_no").notNull().unique(),
+  externalRef: text("external_ref").unique(),
+  externalSource: text("external_source"),
   partyId: varchar("party_id").notNull().references(() => parties.id),
   partyName: text("party_name").notNull(),
   partyCode: text("party_code").notNull(),
@@ -104,6 +106,21 @@ export const insertDispatchSchema = createInsertSchema(dispatches).omit({
 
 export type InsertDispatch = z.infer<typeof insertDispatchSchema>;
 export type Dispatch = typeof dispatches.$inferSelect;
+
+export const sitePulseStatusOutbox = pgTable("sitepulse_status_outbox", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  externalRef: text("external_ref").notNull(),
+  challanNo: text("challan_no").notNull(),
+  status: text("status").notNull(),
+  at: timestamp("at").notNull(),
+  byName: text("by_name").notNull(),
+  deliveryStatus: text("delivery_status").notNull().default("PENDING"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  nextAttemptAt: timestamp("next_attempt_at").notNull().defaultNow(),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+  sentAt: timestamp("sent_at"),
+});
 
 export const siteTokens = pgTable("site_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -4,10 +4,12 @@ import session from "express-session";
 import { Server as SocketIOServer } from "socket.io";
 import { storage } from "./storage";
 import { hashPassword, verifyPassword, requireAuth, requireAdmin, requirePlantOrAdmin, requireRole, getCurrentUser } from "./auth";
-import { insertPartySchema, insertDispatchSchema } from "@shared/schema";
+import { insertPartySchema, insertDispatchSchema, type Dispatch, type Party, type Site } from "@shared/schema";
 import { z } from "zod";
 import { getVapidPublicKey, broadcastNotification, sendSiteNotification } from "./push-notifications";
 import { triggerSiteNotification, resolveCredentials, sendTestSms } from "./sms-notifications";
+import { auditSitePulseCall, limitSitePulseRequests, requireSitePulseKey } from "./sitepulse-security";
+import { enqueueSitePulseStatus } from "./sitepulse-outbox";
 
 let io: SocketIOServer;
 
@@ -41,6 +43,95 @@ export async function registerRoutes(
       console.log("Client disconnected:", socket.id);
     });
   });
+
+  async function createDispatchAndNotify(input: {
+    party: Party;
+    site: Site;
+    vehicleNo: string;
+    loadMT: string | number;
+    notes?: string | null;
+    driverName?: string | null;
+    driverMobile?: string | null;
+    mixType?: string | null;
+    externalRef?: string;
+    externalSource?: string;
+  }) {
+    const { party, site, vehicleNo, loadMT, notes, driverName, driverMobile } = input;
+    const normalizedVehicleNo = vehicleNo.toUpperCase();
+    const normalizedDriverName = driverName?.trim() || null;
+    const normalizedDriverMobile = driverMobile?.trim() || null;
+    const nextSeq = await storage.incrementChallanSequence(site.id);
+    const challanNo = `${site.siteCode}-${String(nextSeq).padStart(4, "0")}`;
+
+    const dispatch = await storage.createDispatch({
+      challanNo,
+      partyId: party.id,
+      partyName: party.partyName,
+      partyCode: party.partyCode,
+      siteId: site.id,
+      siteCode: site.siteCode,
+      siteName: site.siteName,
+      mixType: input.mixType || site.mixType,
+      vehicleNo: normalizedVehicleNo,
+      driverName: normalizedDriverName,
+      driverMobile: normalizedDriverMobile,
+      loadMT: String(loadMT),
+      status: "DISPATCHED",
+      notes: notes?.toUpperCase() || null,
+      createdBy: null,
+      externalRef: input.externalRef ?? null,
+      externalSource: input.externalSource ?? null,
+    });
+
+    io.emit("new-dispatch", {
+      dispatch,
+      partyName: party.partyName,
+      partyCode: party.partyCode,
+      siteName: site.siteName,
+    });
+
+    sendSiteNotification(site.id, {
+      title: "🚛 New Dispatch Created",
+      body: `${challanNo} - ${loadMT} MT to ${site.siteName}`,
+      tag: `dispatch-${dispatch.id}`,
+      data: { type: "new-dispatch", dispatchId: dispatch.id, url: `/site/${site.accessId}` },
+    }).catch((err) => console.error("Push notification error:", err));
+
+    if (site.notifyMobile) {
+      triggerSiteNotification({
+        event: "DISPATCHED",
+        challanNo,
+        siteName: site.siteName,
+        vehicleNo: normalizedVehicleNo,
+        driverName: normalizedDriverName,
+        driverMobile: normalizedDriverMobile,
+        loadMT: String(loadMT),
+        notifyMobile: site.notifyMobile,
+        timestamp: new Date(),
+      }).catch((err) => console.error("[SMS] Dispatch notification error:", err));
+    }
+
+    return dispatch;
+  }
+
+  async function enqueueStatusCallback(dispatch: {
+    externalSource?: string | null;
+    externalRef?: string | null;
+    challanNo: string;
+  }, status: "ARRIVED" | "LEFT", at: Date, byName: string) {
+    if (dispatch.externalSource !== "SITEPULSE" || !dispatch.externalRef) return;
+    try {
+      await enqueueSitePulseStatus({
+        externalRef: dispatch.externalRef,
+        challanNo: dispatch.challanNo,
+        status,
+        at,
+        byName,
+      });
+    } catch (error) {
+      console.error("[SitePulse outbox] Could not queue status callback:", error instanceof Error ? error.message : "Unknown error");
+    }
+  }
 
   app.use(
     session({
@@ -706,54 +797,15 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Site not found" });
       }
 
-      const nextSeq = await storage.incrementChallanSequence(siteId);
-      const challanNo = `${site.siteCode}-${String(nextSeq).padStart(4, '0')}`;
-
-      const dispatch = await storage.createDispatch({
-        challanNo,
-        partyId,
-        partyName: party.partyName,
-        partyCode: party.partyCode,
-        siteId,
-        siteCode: site.siteCode,
-        siteName: site.siteName,
-        mixType: site.mixType,
-        vehicleNo: vehicleNo.toUpperCase(),
-        driverName: driverName?.trim() || null,
-        driverMobile: driverMobile?.trim() || null,
+      const dispatch = await createDispatchAndNotify({
+        party,
+        site,
+        vehicleNo,
         loadMT,
-        status: "DISPATCHED",
-        notes: notes?.toUpperCase() || null,
-        createdBy: null,
+        notes,
+        driverName,
+        driverMobile,
       });
-
-      io.emit("new-dispatch", {
-        dispatch,
-        partyName: party.partyName,
-        partyCode: party.partyCode,
-        siteName: site.siteName,
-      });
-
-      sendSiteNotification(siteId, {
-        title: "🚛 New Dispatch Created",
-        body: `${challanNo} - ${loadMT} MT to ${site.siteName}`,
-        tag: `dispatch-${dispatch.id}`,
-        data: { type: "new-dispatch", dispatchId: dispatch.id, url: `/site/${site.accessId}` },
-      }).catch((err) => console.error("Push notification error:", err));
-
-      if (site.notifyMobile) {
-        triggerSiteNotification({
-          event: "DISPATCHED",
-          challanNo,
-          siteName: site.siteName,
-          vehicleNo: vehicleNo.toUpperCase(),
-          driverName: driverName?.trim() || null,
-          driverMobile: driverMobile?.trim() || null,
-          loadMT,
-          notifyMobile: site.notifyMobile,
-          timestamp: new Date(),
-        }).catch((err) => console.error("[SMS] Dispatch notification error:", err));
-      }
 
       return res.json(dispatch);
     } catch (error) {
@@ -762,6 +814,143 @@ export async function registerRoutes(
       }
       console.error("Create dispatch error:", error);
       return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  const sitePulseMiddleware = [limitSitePulseRequests, auditSitePulseCall, requireSitePulseKey] as const;
+
+  app.post("/api/integrations/sitepulse/dispatches", ...sitePulseMiddleware, async (req: Request, res: Response) => {
+    const requestSchema = z.object({
+      externalRef: z.string().trim().min(1).max(200),
+      siteId: z.string().min(1),
+      vehicleNo: z.string().trim().min(1).max(100),
+      loadMT: z.coerce.number().positive().finite(),
+      driverName: z.string().trim().max(200).optional(),
+      driverMobile: z.string().trim().max(50).optional(),
+      notes: z.string().max(2000).optional(),
+      mixType: z.string().trim().max(100).optional(),
+    }).strict();
+    const parsed = requestSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid request" });
+
+    try {
+      const existing = await storage.getDispatchByExternalRef(parsed.data.externalRef);
+      if (existing) return res.json({ id: existing.id, challanNo: existing.challanNo, status: existing.status });
+
+      const site = await storage.getSite(parsed.data.siteId);
+      if (!site) return res.status(404).json({ error: "Site not found" });
+      if (site.status !== "ACTIVE") return res.status(400).json({ error: "Site is not active" });
+
+      const party = await storage.getParty(site.partyId);
+      if (!party) return res.status(404).json({ error: "Party not found" });
+      if (party.status !== "ACTIVE") return res.status(400).json({ error: "Party is not active" });
+
+      try {
+        const dispatch = await createDispatchAndNotify({
+          party,
+          site,
+          vehicleNo: parsed.data.vehicleNo,
+          loadMT: String(parsed.data.loadMT),
+          notes: parsed.data.notes,
+          driverName: parsed.data.driverName,
+          driverMobile: parsed.data.driverMobile,
+          mixType: parsed.data.mixType,
+          externalRef: parsed.data.externalRef,
+          externalSource: "SITEPULSE",
+        });
+        return res.status(201).json({ id: dispatch.id, challanNo: dispatch.challanNo, status: dispatch.status });
+      } catch (error: any) {
+        if (error?.code === "23505") {
+          const duplicate = await storage.getDispatchByExternalRef(parsed.data.externalRef);
+          if (duplicate) return res.json({ id: duplicate.id, challanNo: duplicate.challanNo, status: duplicate.status });
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error("[SitePulse integration] Create dispatch failed:", error instanceof Error ? error.message : "Unknown error");
+      return res.status(500).json({ error: "Failed to create dispatch" });
+    }
+  });
+
+  app.patch("/api/integrations/sitepulse/dispatches/:externalRef", ...sitePulseMiddleware, async (req: Request, res: Response) => {
+    const externalRef = String(req.params.externalRef || "");
+    const dispatch = await storage.getDispatchByExternalRef(externalRef);
+    if (!dispatch) return res.status(404).json({ error: "Dispatch not found" });
+    if (dispatch.status === "UNLOADED" || dispatch.status === "LEFT") {
+      return res.status(409).json({ error: "Dispatch cannot be changed after it has been marked LEFT" });
+    }
+
+    const cancelSchema = z.object({ cancelled: z.literal(true) }).strict();
+    const cancel = cancelSchema.safeParse(req.body);
+    if (cancel.success) {
+      if (!dispatch.siteId) return res.status(409).json({ error: "Dispatch has no linked site" });
+      const updated = await storage.updateDispatch(dispatch.id, { status: "CANCELLED" });
+      const site = await storage.getSite(dispatch.siteId);
+      io.emit("dispatch-status-updated", {
+        dispatch: updated,
+        partyName: dispatch.partyName,
+        partyCode: dispatch.partyCode,
+        newStatus: "CANCELLED",
+      });
+      if (site) {
+        sendSiteNotification(site.id, {
+          title: "Dispatch Cancelled",
+          body: `Challan ${dispatch.challanNo} cancelled`,
+          tag: `cancelled-${dispatch.id}`,
+          data: { type: "cancelled", dispatchId: dispatch.id, url: `/site/${site.accessId}` },
+        }).catch((err) => console.error("[SitePulse integration] Cancellation push failed:", err instanceof Error ? err.message : "Unknown error"));
+      }
+      return res.json({ id: updated?.id, challanNo: updated?.challanNo, status: updated?.status });
+    }
+
+    const updateSchema = z.object({
+      vehicleNo: z.string().trim().min(1).max(100).transform((value) => value.toUpperCase()).optional(),
+      loadMT: z.coerce.number().positive().finite().optional(),
+      driverName: z.string().trim().max(200).nullable().optional(),
+      driverMobile: z.string().trim().max(50).nullable().optional(),
+      notes: z.string().max(2000).nullable().optional(),
+    }).strict().refine((value) => Object.keys(value).length > 0, "At least one editable field is required");
+    const parsed = updateSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid update" });
+
+    try {
+      const changes: Partial<Dispatch> = {};
+      if (parsed.data.vehicleNo !== undefined) changes.vehicleNo = parsed.data.vehicleNo;
+      if (parsed.data.loadMT !== undefined) changes.loadMT = String(parsed.data.loadMT);
+      if (parsed.data.driverName !== undefined) changes.driverName = parsed.data.driverName;
+      if (parsed.data.driverMobile !== undefined) changes.driverMobile = parsed.data.driverMobile;
+      if (parsed.data.notes !== undefined) changes.notes = parsed.data.notes;
+      const updated = await storage.updateDispatch(dispatch.id, changes);
+      return res.json({ id: updated?.id, challanNo: updated?.challanNo, status: updated?.status });
+    } catch (error) {
+      console.error("[SitePulse integration] Update dispatch failed:", error instanceof Error ? error.message : "Unknown error");
+      return res.status(500).json({ error: "Failed to update dispatch" });
+    }
+  });
+
+  app.get("/api/integrations/sitepulse/sites", ...sitePulseMiddleware, async (_req: Request, res: Response) => {
+    try {
+      const activeParties = (await storage.getParties()).filter((party) => party.status === "ACTIVE");
+      const allSites = await storage.getAllSites();
+      const activePartyIds = new Set(activeParties.map((party) => party.id));
+      const activeSites = allSites.filter((site) => site.status === "ACTIVE" && activePartyIds.has(site.partyId));
+      const partyById = new Map(activeParties.map((party) => [party.id, party]));
+      return res.json(activeSites.map((site) => {
+        const party = partyById.get(site.partyId)!;
+        return {
+          partyId: party.id,
+          partyName: party.partyName,
+          partyCode: party.partyCode,
+          siteId: site.id,
+          siteCode: site.siteCode,
+          siteName: site.siteName,
+          mixType: site.mixType,
+          orderedMT: site.orderedMT,
+        };
+      }));
+    } catch (error) {
+      console.error("[SitePulse integration] List sites failed:", error instanceof Error ? error.message : "Unknown error");
+      return res.status(500).json({ error: "Failed to list sites" });
     }
   });
 
@@ -873,9 +1062,10 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Dispatch is not in DISPATCHED status" });
       }
 
+      const statusAt = new Date();
       const updated = await storage.updateDispatch(id, {
         status: "ARRIVED",
-        arrivedAt: new Date(),
+        arrivedAt: statusAt,
         arrivedByName,
       });
 
@@ -910,6 +1100,7 @@ export async function registerRoutes(
         }).catch((err) => console.error("[SMS] Arrived notification error:", err));
       }
 
+      await enqueueStatusCallback(dispatch, "ARRIVED", statusAt, arrivedByName);
       return res.json(updated);
     } catch (error) {
       console.error("Arrived error:", error);
@@ -940,9 +1131,10 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Dispatch is not in ARRIVED status" });
       }
 
+      const statusAt = new Date();
       const updated = await storage.updateDispatch(id, {
         status: "UNLOADED",
-        leftAt: new Date(),
+        leftAt: statusAt,
         leftByName,
       });
 
@@ -977,6 +1169,7 @@ export async function registerRoutes(
         }).catch((err) => console.error("[SMS] Unloaded notification error:", err));
       }
 
+      await enqueueStatusCallback(dispatch, "LEFT", statusAt, leftByName);
       return res.json(updated);
     } catch (error) {
       console.error("Left error:", error);
@@ -1148,9 +1341,10 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Dispatch is not in DISPATCHED status" });
       }
 
+      const statusAt = new Date();
       const updated = await storage.updateDispatch(id, {
         status: "ARRIVED",
-        arrivedAt: new Date(),
+        arrivedAt: statusAt,
         arrivedByName,
       });
 
@@ -1184,6 +1378,7 @@ export async function registerRoutes(
         }).catch((err) => console.error("[SMS] Site arrived notification error:", err));
       }
 
+      await enqueueStatusCallback(dispatch, "ARRIVED", statusAt, arrivedByName);
       return res.json(updated);
     } catch (error) {
       console.error("Site arrived error:", error);
@@ -1229,9 +1424,10 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Dispatch is not in ARRIVED status" });
       }
 
+      const statusAt = new Date();
       const updated = await storage.updateDispatch(id, {
         status: "UNLOADED",
-        leftAt: new Date(),
+        leftAt: statusAt,
         leftByName,
       });
 
@@ -1265,6 +1461,7 @@ export async function registerRoutes(
         }).catch((err) => console.error("[SMS] Site left notification error:", err));
       }
 
+      await enqueueStatusCallback(dispatch, "LEFT", statusAt, leftByName);
       return res.json(updated);
     } catch (error) {
       console.error("Site left error:", error);
