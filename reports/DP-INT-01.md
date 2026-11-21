@@ -99,11 +99,11 @@ Content-Type: application/json
 
 ## Migration
 
-`migrations/0001_sitepulse_integration.sql` adds nullable `external_ref` and `external_source` columns, a unique constraint on `external_ref` (multiple nulls remain allowed), and the additive status-callback outbox table and index. The migration is supplied but has not been applied to any database.
+`migrations/0001_sitepulse_integration.sql` adds nullable `external_ref` and `external_source` columns, a unique constraint on `external_ref` (multiple nulls remain allowed), and the additive status-callback outbox table and index. The migration was applied to the development database only; production was not changed.
 
 ## Verification
 
 - `npm run test:sitepulse`: 4 tests passed (missing key, wrong key, correct key, and rate limiting).
 - `npm run check`: currently fails on existing TypeScript diagnostics in the project, including existing route parameter typing, a party form type, and the missing `web-push` declaration. No diagnostics were emitted for the new SitePulse modules or integration handlers.
-- Database-backed endpoint tests were not run; no test database was configured, and production data was not touched.
-- `SITEPULSE_BASE_URL` is configured as a shared environment variable. `SITEPULSE_SHARED_SECRET` still needs to be entered through the secure Secrets flow before the integration can authenticate or send callbacks.
+- Database-backed endpoint tests were not run. Production data was not touched.
+- `SITEPULSE_BASE_URL` and `SITEPULSE_SHARED_SECRET` are configured in Replit Secrets. Their values are intentionally omitted.
