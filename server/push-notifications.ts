@@ -3,9 +3,9 @@ import { storage } from "./storage";
 
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "";
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
-const vapidSubject = process.env.VAPID_SUBJECT || "mailto:admin@dispatchpro.app";
+const vapidSubject = process.env.VAPID_SUBJECT || "";
 
-if (vapidPublicKey && vapidPrivateKey) {
+if (vapidPublicKey && vapidPrivateKey && vapidSubject) {
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
   console.log("[Push] VAPID keys configured successfully");
 } else {
