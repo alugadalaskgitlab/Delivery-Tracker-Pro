@@ -107,3 +107,4 @@ Content-Type: application/json
 - `npm run check`: currently fails on existing TypeScript diagnostics in the project, including existing route parameter typing, a party form type, and the missing `web-push` declaration. No diagnostics were emitted for the new SitePulse modules or integration handlers.
 - Database-backed endpoint tests were not run. Production data was not touched.
 - `SITEPULSE_BASE_URL` and `SITEPULSE_SHARED_SECRET` are configured in Replit Secrets. Their values are intentionally omitted.
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` are configured in Replit Secrets; no VAPID values remain in `.replit`, code, or this report. Copy `SITEPULSE_SHARED_SECRET` into SitePulse's Secrets under the same name.
