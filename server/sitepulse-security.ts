@@ -27,6 +27,12 @@ export function limitSitePulseRequests(req: Request, res: Response, next: NextFu
   const client = req.ip || req.socket.remoteAddress || "unknown";
   const current = requestsByClient.get(client);
 
+  if (requestsByClient.size > 10_000) {
+    requestsByClient.forEach((entry, key) => {
+      if (now - entry.windowStartedAt >= WINDOW_MS) requestsByClient.delete(key);
+    });
+  }
+
   if (!current || now - current.windowStartedAt >= WINDOW_MS) {
     requestsByClient.set(client, { count: 1, windowStartedAt: now });
     return next();

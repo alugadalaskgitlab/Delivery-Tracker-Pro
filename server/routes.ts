@@ -817,7 +817,7 @@ export async function registerRoutes(
     }
   });
 
-  const sitePulseMiddleware = [limitSitePulseRequests, auditSitePulseCall, requireSitePulseKey] as const;
+  const sitePulseMiddleware = [auditSitePulseCall, limitSitePulseRequests, requireSitePulseKey] as const;
 
   app.post("/api/integrations/sitepulse/dispatches", ...sitePulseMiddleware, async (req: Request, res: Response) => {
     const requestSchema = z.object({
