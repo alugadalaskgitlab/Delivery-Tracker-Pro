@@ -4,12 +4,18 @@ import session from "express-session";
 import { Server as SocketIOServer } from "socket.io";
 import { storage } from "./storage";
 import { hashPassword, verifyPassword, requireAuth, requireAdmin, requirePlantOrAdmin, requireRole, getCurrentUser } from "./auth";
-import { insertPartySchema, insertDispatchSchema, type Dispatch, type Party, type Site } from "@shared/schema";
+import { insertPartySchema, insertDispatchSchema, type Dispatch } from "@shared/schema";
 import { z } from "zod";
 import { getVapidPublicKey, broadcastNotification, sendSiteNotification } from "./push-notifications";
 import { triggerSiteNotification, resolveCredentials, sendTestSms } from "./sms-notifications";
 import { auditSitePulseCall, limitSitePulseRequests, requireSitePulseKey } from "./sitepulse-security";
 import { enqueueSitePulseStatus } from "./sitepulse-outbox";
+import {
+  createDispatchAndNotify as createDispatchAndNotifyWithDependencies,
+  formatSitePulseValidationError,
+  sitePulseCreateDispatchSchema,
+  sitePulseUpdateDispatchSchema,
+} from "./sitepulse-dispatch";
 
 let io: SocketIOServer;
 
@@ -36,6 +42,13 @@ export async function registerRoutes(
       methods: ["GET", "POST"],
     },
   });
+  const createDispatchAndNotify = (input: Parameters<typeof createDispatchAndNotifyWithDependencies>[0]) =>
+    createDispatchAndNotifyWithDependencies(input, {
+      storage,
+      emitNewDispatch: (payload) => io.emit("new-dispatch", payload),
+      sendSiteNotification,
+      triggerSiteNotification,
+    });
 
   io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);
@@ -43,76 +56,6 @@ export async function registerRoutes(
       console.log("Client disconnected:", socket.id);
     });
   });
-
-  async function createDispatchAndNotify(input: {
-    party: Party;
-    site: Site;
-    vehicleNo: string;
-    loadMT: string | number;
-    notes?: string | null;
-    driverName?: string | null;
-    driverMobile?: string | null;
-    mixType?: string | null;
-    externalRef?: string;
-    externalSource?: string;
-  }) {
-    const { party, site, vehicleNo, loadMT, notes, driverName, driverMobile } = input;
-    const normalizedVehicleNo = vehicleNo.toUpperCase();
-    const normalizedDriverName = driverName?.trim() || null;
-    const normalizedDriverMobile = driverMobile?.trim() || null;
-    const nextSeq = await storage.incrementChallanSequence(site.id);
-    const challanNo = `${site.siteCode}-${String(nextSeq).padStart(4, "0")}`;
-
-    const dispatch = await storage.createDispatch({
-      challanNo,
-      partyId: party.id,
-      partyName: party.partyName,
-      partyCode: party.partyCode,
-      siteId: site.id,
-      siteCode: site.siteCode,
-      siteName: site.siteName,
-      mixType: input.mixType || site.mixType,
-      vehicleNo: normalizedVehicleNo,
-      driverName: normalizedDriverName,
-      driverMobile: normalizedDriverMobile,
-      loadMT: String(loadMT),
-      status: "DISPATCHED",
-      notes: notes?.toUpperCase() || null,
-      createdBy: null,
-      externalRef: input.externalRef ?? null,
-      externalSource: input.externalSource ?? null,
-    });
-
-    io.emit("new-dispatch", {
-      dispatch,
-      partyName: party.partyName,
-      partyCode: party.partyCode,
-      siteName: site.siteName,
-    });
-
-    sendSiteNotification(site.id, {
-      title: "🚛 New Dispatch Created",
-      body: `${challanNo} - ${loadMT} MT to ${site.siteName}`,
-      tag: `dispatch-${dispatch.id}`,
-      data: { type: "new-dispatch", dispatchId: dispatch.id, url: `/site/${site.accessId}` },
-    }).catch((err) => console.error("Push notification error:", err));
-
-    if (site.notifyMobile) {
-      triggerSiteNotification({
-        event: "DISPATCHED",
-        challanNo,
-        siteName: site.siteName,
-        vehicleNo: normalizedVehicleNo,
-        driverName: normalizedDriverName,
-        driverMobile: normalizedDriverMobile,
-        loadMT: String(loadMT),
-        notifyMobile: site.notifyMobile,
-        timestamp: new Date(),
-      }).catch((err) => console.error("[SMS] Dispatch notification error:", err));
-    }
-
-    return dispatch;
-  }
 
   async function enqueueStatusCallback(dispatch: {
     externalSource?: string | null;
@@ -820,18 +763,8 @@ export async function registerRoutes(
   const sitePulseMiddleware = [auditSitePulseCall, limitSitePulseRequests, requireSitePulseKey] as const;
 
   app.post("/api/integrations/sitepulse/dispatches", ...sitePulseMiddleware, async (req: Request, res: Response) => {
-    const requestSchema = z.object({
-      externalRef: z.string().trim().min(1).max(200),
-      siteId: z.string().min(1),
-      vehicleNo: z.string().trim().min(1).max(100),
-      loadMT: z.coerce.number().positive().finite(),
-      driverName: z.string().trim().max(200).optional(),
-      driverMobile: z.string().trim().max(50).optional(),
-      notes: z.string().max(2000).optional(),
-      mixType: z.string().trim().max(100).optional(),
-    }).strict();
-    const parsed = requestSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid request" });
+    const parsed = sitePulseCreateDispatchSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: formatSitePulseValidationError(parsed.error) });
 
     try {
       const existing = await storage.getDispatchByExternalRef(parsed.data.externalRef);
@@ -903,15 +836,8 @@ export async function registerRoutes(
       return res.json({ id: updated?.id, challanNo: updated?.challanNo, status: updated?.status });
     }
 
-    const updateSchema = z.object({
-      vehicleNo: z.string().trim().min(1).max(100).transform((value) => value.toUpperCase()).optional(),
-      loadMT: z.coerce.number().positive().finite().optional(),
-      driverName: z.string().trim().max(200).nullable().optional(),
-      driverMobile: z.string().trim().max(50).nullable().optional(),
-      notes: z.string().max(2000).nullable().optional(),
-    }).strict().refine((value) => Object.keys(value).length > 0, "At least one editable field is required");
-    const parsed = updateSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0]?.message || "Invalid update" });
+    const parsed = sitePulseUpdateDispatchSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: formatSitePulseValidationError(parsed.error) });
 
     try {
       const changes: Partial<Dispatch> = {};
@@ -920,6 +846,7 @@ export async function registerRoutes(
       if (parsed.data.driverName !== undefined) changes.driverName = parsed.data.driverName;
       if (parsed.data.driverMobile !== undefined) changes.driverMobile = parsed.data.driverMobile;
       if (parsed.data.notes !== undefined) changes.notes = parsed.data.notes;
+      if (parsed.data.mixType !== undefined) changes.mixType = parsed.data.mixType;
       const updated = await storage.updateDispatch(dispatch.id, changes);
       return res.json({ id: updated?.id, challanNo: updated?.challanNo, status: updated?.status });
     } catch (error) {
