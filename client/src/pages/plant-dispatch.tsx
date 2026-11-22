@@ -280,7 +280,6 @@ export default function PlantDispatch() {
           <div className="flex justify-between items-center">
             <CompanyHeader size="small" showTagline={false} className="flex-row gap-3" />
             <div className="flex items-center gap-4">
-              <NotificationToggle role="PLANT" />
               <Button variant="outline" onClick={handleLogout} data-testid="button-home" className="gap-2">
                 <Home className="h-4 w-4" />
                 Home
@@ -294,6 +293,7 @@ export default function PlantDispatch() {
       </header>
 
       <main className="container mx-auto px-4 py-8 space-y-6">
+        <NotificationToggle role="PLANT" variant="compact" />
         <Card>
           <CardHeader>
             <CardTitle>Create New Dispatch</CardTitle>

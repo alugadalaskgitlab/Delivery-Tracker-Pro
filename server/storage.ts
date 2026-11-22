@@ -76,6 +76,7 @@ export interface IStorage {
   setSetting(key: string, value: string): Promise<void>;
 
   savePushSubscription(sub: InsertPushSubscription): Promise<PushSubscription>;
+  getPushSubscriptionByEndpoint(endpoint: string): Promise<PushSubscription | undefined>;
   removePushSubscription(endpoint: string): Promise<boolean>;
   getAllPushSubscriptions(): Promise<PushSubscription[]>;
   getPushSubscriptionsBySiteId(siteId: string): Promise<PushSubscription[]>;
@@ -319,6 +320,11 @@ export class DbStorage implements IStorage {
       return result[0];
     }
     const result = await db.insert(pushSubscriptions).values(sub).returning();
+    return result[0];
+  }
+
+  async getPushSubscriptionByEndpoint(endpoint: string): Promise<PushSubscription | undefined> {
+    const result = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)).limit(1);
     return result[0];
   }
 

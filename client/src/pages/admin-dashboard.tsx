@@ -1137,7 +1137,6 @@ export default function AdminDashboard() {
           <div className="flex justify-between items-center">
             <CompanyHeader size="small" showTagline={false} className="flex-row gap-3" />
             <div className="flex items-center gap-2">
-              <NotificationToggle role="ADMIN" />
               <Button variant="outline" onClick={() => setShowSettingsDialog(true)} data-testid="button-settings">
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
@@ -1155,6 +1154,7 @@ export default function AdminDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
+        <NotificationToggle role="ADMIN" variant="compact" />
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">

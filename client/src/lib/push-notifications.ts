@@ -1,3 +1,5 @@
+import { matchesApplicationServerKey } from "./notification-state";
+
 let swRegistration: ServiceWorkerRegistration | null = null;
 
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
@@ -35,7 +37,7 @@ export function isStandalonePWA(): boolean {
 }
 
 export function isIOSNeedsPWA(): boolean {
-  return isIOSDevice() && !isStandalonePWA() && !isNotificationSupported();
+  return isIOSDevice() && !isStandalonePWA();
 }
 
 export function getNotificationPermission(): NotificationPermission {
@@ -167,12 +169,26 @@ export async function unsubscribeFromPush(): Promise<boolean> {
   }
 }
 
-export async function isPushSubscribed(): Promise<boolean> {
+export async function isPushSubscribed(role?: string, siteId?: string): Promise<boolean> {
   try {
     if (!("serviceWorker" in navigator)) return false;
     const reg = await navigator.serviceWorker.ready;
     const subscription = await reg.pushManager.getSubscription();
-    return !!subscription;
+    if (!subscription) return false;
+
+    const vapidRes = await fetch("/api/push/vapid-public-key");
+    if (!vapidRes.ok) return false;
+    const { key } = await vapidRes.json();
+    if (!matchesApplicationServerKey(subscription.options.applicationServerKey, key)) return false;
+
+    const response = await fetch("/api/push/subscription-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: subscription.endpoint, role: role || null, siteId: siteId || null }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.subscribed === true;
   } catch {
     return false;
   }

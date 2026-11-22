@@ -1507,6 +1507,28 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/push/subscription-status", async (req: Request, res: Response) => {
+    try {
+      const parsed = z.object({
+        endpoint: z.string().url(),
+        role: z.string().nullable().optional(),
+        siteId: z.string().nullable().optional(),
+      }).safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid subscription data" });
+      }
+      const { endpoint, role, siteId } = parsed.data;
+      const subscription = await storage.getPushSubscriptionByEndpoint(endpoint);
+      const matchesContext = !!subscription
+        && (subscription.role || null) === (role || null)
+        && (subscription.siteId || null) === (siteId || null);
+      return res.json({ subscribed: matchesContext });
+    } catch (error) {
+      console.error("Push subscription status error:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.post("/api/push/unsubscribe", async (req: Request, res: Response) => {
     try {
       const { endpoint } = req.body;

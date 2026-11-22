@@ -218,7 +218,6 @@ export default function SiteAccess() {
         <div className="container mx-auto px-4 py-3">
           <div className="flex justify-between items-center mb-2">
             <CompanyHeader size="small" showTagline={false} />
-            <NotificationToggle role="SITE" siteId={validation.siteId} />
           </div>
           <div className="text-center">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Site Dispatch Tracking</p>
@@ -237,6 +236,7 @@ export default function SiteAccess() {
       </header>
 
       <main className="container mx-auto px-4 py-8 space-y-6">
+        <NotificationToggle role="SITE" siteId={validation.siteId} variant="prominent" />
         <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
           <CardContent className="pt-6">
             <div className="grid grid-cols-3 gap-4 text-center">
