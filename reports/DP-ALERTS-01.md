@@ -14,7 +14,7 @@ Existing notification content, SMS behavior, roles, PINs, site tokens, dispatch 
 
 ## Phone-width state screenshots
 
-These 390 px wide screenshots show the four requested states:
+These 390 px wide visual state previews show the four requested states. The live app preview could not show a valid site link, so these are not captures from an authenticated site session or a physical iPhone:
 
 | State | Screenshot |
 |---|---|
