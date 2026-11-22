@@ -21,13 +21,19 @@ export const sitePulseCreateDispatchSchema = z.object({
 }).strict();
 
 export const sitePulseUpdateDispatchSchema = z.object({
+  externalRef: z.string().trim().min(1).optional(),
+  siteId: z.string().min(1).optional(),
   vehicleNo: z.string().trim().min(1).max(100).transform((value) => value.toUpperCase()).optional(),
   loadMT: z.coerce.number().positive().finite().optional(),
   driverName: optionalText(200, true),
   driverMobile: optionalText(50, true),
   notes: optionalText(2000),
   mixType: optionalText(100, true),
-}).strict().refine((value) => Object.keys(value).length > 0, "At least one editable field is required");
+}).strict().refine(
+  (value) => [value.vehicleNo, value.loadMT, value.driverName, value.driverMobile, value.notes, value.mixType]
+    .some((field) => field !== undefined),
+  "At least one editable field is required",
+);
 
 export function formatSitePulseValidationError(error: z.ZodError): string {
   const issue = error.issues[0];
@@ -42,6 +48,30 @@ export function formatSitePulseValidationError(error: z.ZodError): string {
     return `${String(field)} is invalid`;
   }
   return issue?.message || "Invalid request";
+}
+
+export function validateSitePulseDispatchUpdate(
+  body: unknown,
+  pathExternalRef: string,
+  dispatch: Pick<Dispatch, "siteId">,
+): { success: true; changes: Partial<Dispatch> } | { success: false; error: string } {
+  const parsed = sitePulseUpdateDispatchSchema.safeParse(body);
+  if (!parsed.success) return { success: false, error: formatSitePulseValidationError(parsed.error) };
+  if (parsed.data.externalRef !== undefined && parsed.data.externalRef !== pathExternalRef) {
+    return { success: false, error: "Reference does not match this trip" };
+  }
+  if (parsed.data.siteId !== undefined && parsed.data.siteId !== dispatch.siteId) {
+    return { success: false, error: "Site can't be changed after dispatch. Cancel this trip and send a new one." };
+  }
+
+  const changes: Partial<Dispatch> = {};
+  if (parsed.data.vehicleNo !== undefined) changes.vehicleNo = parsed.data.vehicleNo;
+  if (parsed.data.loadMT !== undefined) changes.loadMT = String(parsed.data.loadMT);
+  if (parsed.data.driverName !== undefined) changes.driverName = parsed.data.driverName;
+  if (parsed.data.driverMobile !== undefined) changes.driverMobile = parsed.data.driverMobile;
+  if (parsed.data.notes !== undefined) changes.notes = parsed.data.notes;
+  if (parsed.data.mixType !== undefined) changes.mixType = parsed.data.mixType;
+  return { success: true, changes };
 }
 
 type CreationStorage = Pick<IStorage, "incrementChallanSequence" | "createDispatch">;

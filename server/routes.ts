@@ -14,7 +14,7 @@ import {
   createDispatchAndNotify as createDispatchAndNotifyWithDependencies,
   formatSitePulseValidationError,
   sitePulseCreateDispatchSchema,
-  sitePulseUpdateDispatchSchema,
+  validateSitePulseDispatchUpdate,
 } from "./sitepulse-dispatch";
 
 let io: SocketIOServer;
@@ -836,18 +836,11 @@ export async function registerRoutes(
       return res.json({ id: updated?.id, challanNo: updated?.challanNo, status: updated?.status });
     }
 
-    const parsed = sitePulseUpdateDispatchSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: formatSitePulseValidationError(parsed.error) });
+    const validation = validateSitePulseDispatchUpdate(req.body, externalRef, dispatch);
+    if (!validation.success) return res.status(400).json({ error: validation.error });
 
     try {
-      const changes: Partial<Dispatch> = {};
-      if (parsed.data.vehicleNo !== undefined) changes.vehicleNo = parsed.data.vehicleNo;
-      if (parsed.data.loadMT !== undefined) changes.loadMT = String(parsed.data.loadMT);
-      if (parsed.data.driverName !== undefined) changes.driverName = parsed.data.driverName;
-      if (parsed.data.driverMobile !== undefined) changes.driverMobile = parsed.data.driverMobile;
-      if (parsed.data.notes !== undefined) changes.notes = parsed.data.notes;
-      if (parsed.data.mixType !== undefined) changes.mixType = parsed.data.mixType;
-      const updated = await storage.updateDispatch(dispatch.id, changes);
+      const updated = await storage.updateDispatch(dispatch.id, validation.changes);
       return res.json({ id: updated?.id, challanNo: updated?.challanNo, status: updated?.status });
     } catch (error) {
       console.error("[SitePulse integration] Update dispatch failed:", error instanceof Error ? error.message : "Unknown error");

@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Dispatch } from "@shared/schema";
-import { formatSitePulseValidationError, sitePulseCreateDispatchSchema, sitePulseUpdateDispatchSchema, createDispatchAndNotify } from "./sitepulse-dispatch";
+import {
+  createDispatchAndNotify,
+  formatSitePulseValidationError,
+  sitePulseCreateDispatchSchema,
+  sitePulseUpdateDispatchSchema,
+  validateSitePulseDispatchUpdate,
+} from "./sitepulse-dispatch";
 
 const party = { id: "party-1", partyName: "Example Party", partyCode: "EX" } as any;
 const site = {
@@ -124,6 +130,7 @@ test("filled POST driver details are trimmed and vehicle number is upper-case", 
 
 test("PATCH accepts null optional fields as not provided", () => {
   const result = sitePulseUpdateDispatchSchema.safeParse({
+    vehicleNo: "TS 15T 4059",
     driverName: null,
     driverMobile: null,
     notes: null,
@@ -148,4 +155,86 @@ test("missing required POST vehicle number returns a plain field-specific error"
   if (!result.success) {
     assert.equal(formatSitePulseValidationError(result.error), "vehicleNo is missing");
   }
+});
+
+const existingDispatch = {
+  id: "dispatch-1",
+  externalRef: "sp-trip-1",
+  siteId: "site-1",
+  challanNo: "SITE-0042",
+  vehicleNo: "OLD 123",
+  loadMT: "30",
+  driverName: "OLD DRIVER",
+} as Dispatch;
+
+test("PATCH accepts matching SitePulse identity fields and changes only editable fields", () => {
+  const result = validateSitePulseDispatchUpdate({
+    externalRef: "sp-trip-1",
+    siteId: "site-1",
+    vehicleNo: "new 456",
+    loadMT: 42.5,
+    driverName: "NEW DRIVER",
+  }, "sp-trip-1", existingDispatch);
+
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.deepEqual(result.changes, {
+    vehicleNo: "NEW 456",
+    loadMT: "42.5",
+    driverName: "NEW DRIVER",
+  });
+  assert.equal("externalRef" in result.changes, false);
+  assert.equal("siteId" in result.changes, false);
+
+  const updatedDispatch = { ...existingDispatch, ...result.changes };
+  assert.equal(updatedDispatch.challanNo, existingDispatch.challanNo);
+  assert.equal(updatedDispatch.id, existingDispatch.id);
+});
+
+test("PATCH rejects a different site without producing changes", () => {
+  const result = validateSitePulseDispatchUpdate({
+    siteId: "site-2",
+    driverName: "NEW DRIVER",
+  }, "sp-trip-1", existingDispatch);
+
+  assert.deepEqual(result, {
+    success: false,
+    error: "Site can't be changed after dispatch. Cancel this trip and send a new one.",
+  });
+});
+
+test("PATCH rejects an external reference that differs from the URL", () => {
+  const result = validateSitePulseDispatchUpdate({
+    externalRef: "sp-other-trip",
+    driverName: "NEW DRIVER",
+  }, "sp-trip-1", existingDispatch);
+
+  assert.deepEqual(result, {
+    success: false,
+    error: "Reference does not match this trip",
+  });
+});
+
+test("PATCH still rejects unknown fields and names them", () => {
+  const result = validateSitePulseDispatchUpdate({
+    foo: "bar",
+    driverName: "NEW DRIVER",
+  }, "sp-trip-1", existingDispatch);
+
+  assert.deepEqual(result, {
+    success: false,
+    error: "Unexpected field: foo",
+  });
+});
+
+test("PATCH with only identity fields still requires an editable field", () => {
+  const result = validateSitePulseDispatchUpdate({
+    externalRef: "sp-trip-1",
+    siteId: "site-1",
+  }, "sp-trip-1", existingDispatch);
+
+  assert.deepEqual(result, {
+    success: false,
+    error: "At least one editable field is required",
+  });
 });
