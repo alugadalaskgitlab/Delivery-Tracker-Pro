@@ -10,7 +10,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test:alerts": "node --import tsx --test client/src/lib/notification-state.test.ts",
-    "test:sitepulse": "node --import tsx --test server/sitepulse-security.test.ts server/sitepulse-dispatch.test.ts",
+    "test:sitepulse": "node --import tsx --test server/sitepulse-security.test.ts server/sitepulse-dispatch.test.ts server/sitepulse-orders.test.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

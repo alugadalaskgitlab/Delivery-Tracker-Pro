@@ -53,6 +53,14 @@ type TokenValidation = {
   orderedMT?: string;
   dispatchedMT?: string;
   balanceMT?: string;
+  orders?: Array<{
+    sitePulseOrderId: string;
+    orderNumber: string;
+    periodFrom: string;
+    periodTo: string;
+    status: string;
+    lines: Array<{ mix: string; orderedMT: string; receivedMT: string; balanceMT: string }>;
+  }>;
   error?: string;
 };
 
@@ -261,6 +269,32 @@ export default function SiteAccess() {
             </div>
           </CardContent>
         </Card>
+
+        {validation.orders && validation.orders.length > 0 && (
+          <Card data-testid="site-orders">
+            <CardHeader>
+              <CardTitle>Supply Orders</CardTitle>
+              <CardDescription>Orders received from SitePulse</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {validation.orders.map((order) => (
+                <div key={order.sitePulseOrderId} className="rounded-md border bg-white p-3" data-testid={`order-${order.sitePulseOrderId}`}>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="font-semibold">Order {order.orderNumber}</p>
+                    <Badge variant={order.status === "OPEN" ? "default" : "secondary"}>{order.status}</Badge>
+                  </div>
+                  <div className="space-y-1">
+                    {order.lines.map((line, index) => (
+                      <p key={`${line.mix}-${index}`} className="text-sm text-gray-700">
+                        Order {order.orderNumber} · {line.mix} {Number(line.orderedMT).toFixed(2)} MT · received {Number(line.receivedMT).toFixed(2)} MT · balance {Number(line.balanceMT).toFixed(2)} MT
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>

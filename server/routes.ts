@@ -16,6 +16,12 @@ import {
   sitePulseCreateDispatchSchema,
   validateSitePulseDispatchUpdate,
 } from "./sitepulse-dispatch";
+import {
+  calculateSitePulseOrderReceivedMT,
+  formatSitePulseOrderError,
+  receiveSitePulseOrder,
+  sitePulseOrderSchema,
+} from "./sitepulse-orders";
 
 let io: SocketIOServer;
 
@@ -848,6 +854,28 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/integrations/sitepulse/orders", ...sitePulseMiddleware, async (req: Request, res: Response) => {
+    const parsed = sitePulseOrderSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: formatSitePulseOrderError(parsed.error) });
+    try {
+      const result = await receiveSitePulseOrder(parsed.data, storage, randomToken);
+      return res.json({
+        partyId: result.party.id,
+        siteId: result.site.id,
+        orderId: result.order.id,
+        orderNumber: result.order.orderNumber,
+        status: result.order.status,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.startsWith("partyName ") || message.startsWith("siteName ") || message.startsWith("sitePulse")) {
+        return res.status(409).json({ error: message });
+      }
+      console.error("[SitePulse integration] Save order failed:", message || "Unknown error");
+      return res.status(500).json({ error: "Failed to save order" });
+    }
+  });
+
   app.get("/api/integrations/sitepulse/sites", ...sitePulseMiddleware, async (_req: Request, res: Response) => {
     try {
       const activeParties = (await storage.getParties()).filter((party) => party.status === "ACTIVE");
@@ -1111,6 +1139,24 @@ export async function registerRoutes(
           return res.status(401).json({ valid: false, error: "This site link is no longer valid. Please contact the plant for a new link." });
         }
         const dispatches = await storage.getDispatchesBySite(site.id);
+        const sitePulseOrders = await storage.getSitePulseOrdersBySite(site.id);
+        const orders = sitePulseOrders.map(({ order, lines }) => ({
+          sitePulseOrderId: order.sitePulseOrderId,
+          orderNumber: order.orderNumber,
+          periodFrom: order.periodFrom,
+          periodTo: order.periodTo,
+          status: order.status,
+          lines: lines.map((line) => {
+            const receivedMT = calculateSitePulseOrderReceivedMT(line.mix, order.periodFrom, order.periodTo, dispatches);
+            const orderedMT = Number(line.orderedMT);
+            return {
+              mix: line.mix,
+              orderedMT: orderedMT.toFixed(2),
+              receivedMT: receivedMT.toFixed(2),
+              balanceMT: (orderedMT - receivedMT).toFixed(2),
+            };
+          }),
+        }));
         const orderedMT = Number(site.orderedMT || 0);
         const dispatchedMT = dispatches.reduce((sum, d) => sum + Number(d.loadMT), 0);
         const balanceMT = orderedMT - dispatchedMT;
@@ -1124,6 +1170,7 @@ export async function registerRoutes(
           orderedMT: orderedMT.toFixed(2),
           dispatchedMT: dispatchedMT.toFixed(2),
           balanceMT: balanceMT.toFixed(2),
+          orders,
         });
       }
 

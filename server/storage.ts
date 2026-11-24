@@ -15,6 +15,10 @@ import {
   type InsertAppSetting,
   type PushSubscription,
   type InsertPushSubscription,
+  type SitePulseOrder,
+  type SitePulseOrderLine,
+  type InsertSitePulseOrder,
+  type InsertSitePulseOrderLine,
   users,
   parties,
   sites,
@@ -25,9 +29,11 @@ import {
   siteSequences,
   appSettings,
   pushSubscriptions,
+  sitePulseOrders,
+  sitePulseOrderLines,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, ne, and, or, desc, sql, isNull } from "drizzle-orm";
+import { eq, ne, and, or, desc, sql, isNull, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -46,7 +52,7 @@ export interface IStorage {
   getSite(id: string): Promise<Site | undefined>;
   getSiteByAccessId(accessId: string): Promise<Site | undefined>;
   createSite(site: InsertSite): Promise<Site>;
-  updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status' | 'accessId' | 'notifyMobile'>>): Promise<Site | undefined>;
+  updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status' | 'accessId' | 'notifyMobile' | 'sitePulseSiteId'>>): Promise<Site | undefined>;
   deleteSite(id: string): Promise<boolean>;
   
   getDispatches(): Promise<Dispatch[]>;
@@ -56,6 +62,8 @@ export interface IStorage {
   getDispatchesByCreator(userId: string): Promise<Dispatch[]>;
   createDispatch(dispatch: InsertDispatch): Promise<Dispatch>;
   updateDispatch(id: string, data: Partial<Dispatch>): Promise<Dispatch | undefined>;
+  getSitePulseOrdersBySite(siteId: string): Promise<Array<{ order: SitePulseOrder; lines: SitePulseOrderLine[] }>>;
+  upsertSitePulseOrder(order: InsertSitePulseOrder, lines: Array<Omit<InsertSitePulseOrderLine, "orderId">>): Promise<SitePulseOrder>;
   
   getSiteTokenByToken(token: string): Promise<SiteToken | undefined>;
   getSiteTokensByParty(partyId: string): Promise<SiteToken[]>;
@@ -151,7 +159,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status' | 'accessId' | 'notifyMobile'>>): Promise<Site | undefined> {
+  async updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status' | 'accessId' | 'notifyMobile' | 'sitePulseSiteId'>>): Promise<Site | undefined> {
     const result = await db.update(sites).set(data).where(eq(sites.id, id)).returning();
     return result[0];
   }
@@ -195,6 +203,48 @@ export class DbStorage implements IStorage {
   async updateDispatch(id: string, data: Partial<Dispatch>): Promise<Dispatch | undefined> {
     const result = await db.update(dispatches).set(data).where(eq(dispatches.id, id)).returning();
     return result[0];
+  }
+
+  async getSitePulseOrdersBySite(siteId: string): Promise<Array<{ order: SitePulseOrder; lines: SitePulseOrderLine[] }>> {
+    const orders = await db.select().from(sitePulseOrders).where(eq(sitePulseOrders.siteId, siteId)).orderBy(desc(sitePulseOrders.updatedAt));
+    if (orders.length === 0) return [];
+    const lines = await db.select().from(sitePulseOrderLines)
+      .where(inArray(sitePulseOrderLines.orderId, orders.map((order) => order.id)));
+    const linesByOrder = new Map<string, SitePulseOrderLine[]>();
+    for (const line of lines) {
+      const group = linesByOrder.get(line.orderId) || [];
+      group.push(line);
+      linesByOrder.set(line.orderId, group);
+    }
+    return orders.map((order) => ({ order, lines: linesByOrder.get(order.id) || [] }));
+  }
+
+  async upsertSitePulseOrder(
+    order: InsertSitePulseOrder,
+    lines: Array<Omit<InsertSitePulseOrderLine, "orderId">>,
+  ): Promise<SitePulseOrder> {
+    return db.transaction(async (tx) => {
+      const now = new Date();
+      const [savedOrder] = await tx.insert(sitePulseOrders)
+        .values({ ...order, updatedAt: now })
+        .onConflictDoUpdate({
+          target: sitePulseOrders.sitePulseOrderId,
+          set: {
+            siteId: order.siteId,
+            orderNumber: order.orderNumber,
+            periodFrom: order.periodFrom,
+            periodTo: order.periodTo,
+            status: order.status,
+            updatedAt: now,
+          },
+        })
+        .returning();
+      await tx.delete(sitePulseOrderLines).where(eq(sitePulseOrderLines.orderId, savedOrder.id));
+      if (lines.length > 0) {
+        await tx.insert(sitePulseOrderLines).values(lines.map((line) => ({ ...line, orderId: savedOrder.id })));
+      }
+      return savedOrder;
+    });
   }
 
   async getSiteTokenByToken(token: string): Promise<SiteToken | undefined> {

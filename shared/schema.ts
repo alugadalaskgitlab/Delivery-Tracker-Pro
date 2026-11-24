@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, numeric, timestamp, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -29,6 +29,7 @@ export const parties = pgTable("parties", {
   panNo: text("pan_no"),
   status: text("status").notNull(),
   accessId: text("access_id").notNull().unique(),
+  sitePulsePartyId: text("sitepulse_party_id").unique(),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -48,8 +49,11 @@ export const sites = pgTable("sites", {
   accessId: text("access_id").notNull().unique(),
   status: text("status").notNull().default("ACTIVE"),
   notifyMobile: text("notify_mobile"),
+  sitePulseSiteId: text("sitepulse_site_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  sitePulseIdentity: uniqueIndex("sites_party_sitepulse_site_unique").on(table.partyId, table.sitePulseSiteId),
+}));
 
 export const siteSequences = pgTable("site_sequences", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -106,6 +110,30 @@ export const insertDispatchSchema = createInsertSchema(dispatches).omit({
 
 export type InsertDispatch = z.infer<typeof insertDispatchSchema>;
 export type Dispatch = typeof dispatches.$inferSelect;
+
+export const sitePulseOrders = pgTable("sitepulse_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sitePulseOrderId: text("sitepulse_order_id").notNull().unique(),
+  siteId: varchar("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  orderNumber: text("order_number").notNull(),
+  periodFrom: timestamp("period_from").notNull(),
+  periodTo: timestamp("period_to").notNull(),
+  status: text("status").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const sitePulseOrderLines = pgTable("sitepulse_order_lines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").notNull().references(() => sitePulseOrders.id, { onDelete: "cascade" }),
+  mix: text("mix").notNull(),
+  orderedMT: numeric("ordered_mt", { precision: 10, scale: 2 }).notNull(),
+});
+
+export type SitePulseOrder = typeof sitePulseOrders.$inferSelect;
+export type SitePulseOrderLine = typeof sitePulseOrderLines.$inferSelect;
+export type InsertSitePulseOrder = typeof sitePulseOrders.$inferInsert;
+export type InsertSitePulseOrderLine = typeof sitePulseOrderLines.$inferInsert;
 
 export const sitePulseStatusOutbox = pgTable("sitepulse_status_outbox", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
