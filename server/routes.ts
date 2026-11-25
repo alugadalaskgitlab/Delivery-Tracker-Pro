@@ -9,6 +9,7 @@ import { z } from "zod";
 import { getVapidPublicKey, broadcastNotification, sendSiteNotification } from "./push-notifications";
 import { triggerSiteNotification, resolveCredentials, sendTestSms } from "./sms-notifications";
 import { auditSitePulseCall, limitSitePulseRequests, requireSitePulseKey } from "./sitepulse-security";
+import { partyDeletionBlockedMessage, siteDeletionBlockedMessage } from "./delete-operations";
 import { enqueueSitePulseStatus } from "./sitepulse-outbox";
 import {
   createDispatchAndNotify as createDispatchAndNotifyWithDependencies,
@@ -522,15 +523,14 @@ export async function registerRoutes(
         return res.status(401).json({ error: "Invalid Owner PIN" });
       }
 
-      const dispatchCount = await storage.getDispatchCountByParty(partyId);
-      if (dispatchCount > 0) {
-        return res.status(400).json({ error: "Cannot delete party with existing dispatches" });
+      const result = await storage.deleteParty(partyId);
+      if (result.challanCount > 0) {
+        return res.status(400).json({
+          error: partyDeletionBlockedMessage(result.challanCount),
+        });
       }
 
-      await storage.deactivateSiteTokensByParty(partyId);
-      const deleted = await storage.deleteParty(partyId);
-
-      if (!deleted) {
+      if (!result.deleted) {
         return res.status(404).json({ error: "Party not found" });
       }
 
@@ -629,8 +629,13 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Invalid owner PIN" });
       }
 
-      const deleted = await storage.deleteSite(id);
-      if (!deleted) {
+      const result = await storage.deleteSite(id);
+      if (result.challanCount > 0) {
+        return res.status(400).json({
+          error: siteDeletionBlockedMessage(result.challanCount),
+        });
+      }
+      if (!result.deleted) {
         return res.status(404).json({ error: "Site not found" });
       }
 

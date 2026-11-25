@@ -34,6 +34,7 @@ import {
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, ne, and, or, desc, sql, isNull, inArray } from "drizzle-orm";
+import { deletePartySafely, deleteSiteSafely, type DeleteResult } from "./delete-operations";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -53,7 +54,7 @@ export interface IStorage {
   getSiteByAccessId(accessId: string): Promise<Site | undefined>;
   createSite(site: InsertSite): Promise<Site>;
   updateSite(id: string, data: Partial<Pick<Site, 'siteName' | 'siteCode' | 'mixType' | 'orderedMT' | 'status' | 'accessId' | 'notifyMobile' | 'sitePulseSiteId'>>): Promise<Site | undefined>;
-  deleteSite(id: string): Promise<boolean>;
+  deleteSite(id: string): Promise<DeleteResult>;
   
   getDispatches(): Promise<Dispatch[]>;
   getDispatch(id: string): Promise<Dispatch | undefined>;
@@ -77,7 +78,7 @@ export interface IStorage {
   deleteChallanSequence(siteId: string): Promise<void>;
   
   getDispatchCountByParty(partyId: string): Promise<number>;
-  deleteParty(id: string): Promise<boolean>;
+  deleteParty(id: string): Promise<DeleteResult>;
   deleteDispatch(id: string): Promise<boolean>;
   
   getSetting(key: string): Promise<string | undefined>;
@@ -164,9 +165,20 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async deleteSite(id: string): Promise<boolean> {
-    const result = await db.delete(sites).where(eq(sites.id, id)).returning();
-    return result.length > 0;
+  async deleteSite(id: string): Promise<DeleteResult> {
+    return db.transaction(async (tx) => deleteSiteSafely(id, {
+      countSiteChallans: async (siteId) => {
+        const rows = await tx.select({ count: sql<number>`count(*)` }).from(dispatches).where(eq(dispatches.siteId, siteId));
+        return Number(rows[0]?.count || 0);
+      },
+      deleteSiteChallanSequences: async (siteId) => {
+        await tx.delete(challanSequences).where(eq(challanSequences.siteId, siteId));
+      },
+      deleteSite: async (siteId) => {
+        const rows = await tx.delete(sites).where(eq(sites.id, siteId)).returning({ id: sites.id });
+        return rows.length > 0;
+      },
+    }));
   }
 
   async getDispatches(): Promise<Dispatch[]> {
@@ -333,12 +345,33 @@ export class DbStorage implements IStorage {
     return Number(result[0]?.count || 0);
   }
 
-  async deleteParty(id: string): Promise<boolean> {
-    // First delete all sites belonging to this party
-    await db.delete(sites).where(eq(sites.partyId, id));
-    // Then delete the party
-    const result = await db.delete(parties).where(eq(parties.id, id)).returning();
-    return result.length > 0;
+  async deleteParty(id: string): Promise<DeleteResult> {
+    return db.transaction(async (tx) => deletePartySafely(id, {
+      getPartySiteIds: async (partyId) => {
+        const rows = await tx.select({ id: sites.id }).from(sites).where(eq(sites.partyId, partyId));
+        return rows.map((row) => row.id);
+      },
+      countPartyChallans: async (partyId) => {
+        const rows = await tx.select({ count: sql<number>`count(*)` }).from(dispatches).where(eq(dispatches.partyId, partyId));
+        return Number(rows[0]?.count || 0);
+      },
+      deletePartySiteChallanSequences: async (siteIds) => {
+        if (siteIds.length) await tx.delete(challanSequences).where(inArray(challanSequences.siteId, siteIds));
+      },
+      deletePartySites: async (partyId) => {
+        await tx.delete(sites).where(eq(sites.partyId, partyId));
+      },
+      deletePartySiteSequence: async (partyId) => {
+        await tx.delete(siteSequences).where(eq(siteSequences.partyId, partyId));
+      },
+      deletePartyTokens: async (partyId) => {
+        await tx.delete(siteTokens).where(eq(siteTokens.partyId, partyId));
+      },
+      deleteParty: async (partyId) => {
+        const rows = await tx.delete(parties).where(eq(parties.id, partyId)).returning({ id: parties.id });
+        return rows.length > 0;
+      },
+    }));
   }
 
   async deleteDispatch(id: string): Promise<boolean> {

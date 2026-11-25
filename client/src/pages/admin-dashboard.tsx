@@ -191,7 +191,8 @@ export default function AdminDashboard() {
   const [smsConfigDirty, setSmsConfigDirty] = useState(false);
   const [ownerPinInput, setOwnerPinInput] = useState("");
   const [showOwnerPinDialog, setShowOwnerPinDialog] = useState(false);
-  const [pendingDeleteAction, setPendingDeleteAction] = useState<{ type: "party" | "dispatch"; id: string } | null>(null);
+  const [pendingDeleteAction, setPendingDeleteAction] = useState<{ type: "party" | "dispatch" | "site"; id: string; label?: string } | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const [pendingStatusAction, setPendingStatusAction] = useState<{ partyId: string; newStatus: PartyStatus } | null>(null);
   const [editingDispatch, setEditingDispatch] = useState<Dispatch | null>(null);
   const [editDispatchForm, setEditDispatchForm] = useState({ vehicleNo: "", loadMT: "", notes: "", driverName: "", driverMobile: "" });
@@ -345,7 +346,7 @@ export default function AdminDashboard() {
       toast({ title: "Success", description: "Party deleted successfully" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setDeleteError(error.message);
     },
   });
 
@@ -481,7 +482,7 @@ export default function AdminDashboard() {
       toast({ title: "Success", description: "Site deleted successfully" });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setDeleteError(error.message);
     },
   });
 
@@ -770,7 +771,17 @@ export default function AdminDashboard() {
       
       // Handle delete actions
       if (pendingDeleteAction?.type === "party") {
-        deletePartyMutation.mutate({ id: pendingDeleteAction.id, ownerPin: ownerPinInput });
+        try {
+          await deletePartyMutation.mutateAsync({ id: pendingDeleteAction.id, ownerPin: ownerPinInput });
+        } catch {
+          return;
+        }
+      } else if (pendingDeleteAction?.type === "site") {
+        try {
+          await deleteSiteMutation.mutateAsync({ id: pendingDeleteAction.id, ownerPin: ownerPinInput });
+        } catch {
+          return;
+        }
       } else if (pendingDeleteAction?.type === "dispatch") {
         deleteDispatchMutation.mutate({ id: pendingDeleteAction.id, ownerPin: ownerPinInput });
       }
@@ -790,12 +801,20 @@ export default function AdminDashboard() {
   }
 
   function requestDeleteParty(party: Party) {
-    setPendingDeleteAction({ type: "party", id: party.id });
+    setDeleteError("");
+    setPendingDeleteAction({ type: "party", id: party.id, label: party.partyName });
     setPartyToDelete(party);
     setShowOwnerPinDialog(true);
   }
 
+  function requestDeleteSite(site: Site) {
+    setDeleteError("");
+    setPendingDeleteAction({ type: "site", id: site.id, label: site.siteName });
+    setShowOwnerPinDialog(true);
+  }
+
   function requestDeleteDispatch(dispatch: Dispatch) {
+    setDeleteError("");
     setPendingDeleteAction({ type: "dispatch", id: dispatch.id });
     setDispatchToDelete(dispatch);
     setShowOwnerPinDialog(true);
@@ -2320,13 +2339,15 @@ export default function AdminDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showOwnerPinDialog} onOpenChange={(open) => { if (!open) { setShowOwnerPinDialog(false); setOwnerPinInput(""); setPendingDeleteAction(null); setPendingStatusAction(null); } }}>
+      <Dialog open={showOwnerPinDialog} onOpenChange={(open) => { if (!open) { setShowOwnerPinDialog(false); setOwnerPinInput(""); setPendingDeleteAction(null); setPendingStatusAction(null); setDeleteError(""); } }}>
         <DialogContent data-testid="dialog-owner-pin">
           <DialogHeader>
             <DialogTitle>Owner Verification Required</DialogTitle>
             <DialogDescription>
               {pendingDeleteAction?.type === "party" 
-                ? `Enter Owner PIN to delete party "${partyToDelete?.partyName}".`
+                ? `Enter Owner PIN to delete party "${pendingDeleteAction.label}".`
+                : pendingDeleteAction?.type === "site"
+                ? `Enter Owner PIN to delete site "${pendingDeleteAction.label}".`
                 : pendingDeleteAction?.type === "dispatch"
                 ? `Enter Owner PIN to delete dispatch "${dispatchToDelete?.challanNo}".`
                 : pendingStatusAction
@@ -2335,6 +2356,7 @@ export default function AdminDashboard() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {deleteError && <div role="alert" className="text-sm text-destructive">{deleteError}</div>}
             <div className="space-y-2">
               <Label htmlFor="ownerPinInput">Owner PIN</Label>
               <Input
@@ -2350,7 +2372,7 @@ export default function AdminDashboard() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowOwnerPinDialog(false); setOwnerPinInput(""); setPendingDeleteAction(null); setPendingStatusAction(null); }}>
+            <Button variant="outline" onClick={() => { setShowOwnerPinDialog(false); setOwnerPinInput(""); setPendingDeleteAction(null); setPendingStatusAction(null); setDeleteError(""); }}>
               Cancel
             </Button>
             <Button variant={pendingDeleteAction ? "destructive" : "default"} onClick={verifyOwnerPin} disabled={!ownerPinInput} data-testid="button-verify-owner-pin">
@@ -2516,10 +2538,7 @@ export default function AdminDashboard() {
                         variant="ghost"
                         className="text-red-600 hover:text-red-700"
                         onClick={() => {
-                          const pin = prompt("Enter Owner PIN to delete this site:");
-                          if (pin) {
-                            deleteSiteMutation.mutate({ id: site.id, ownerPin: pin });
-                          }
+                          requestDeleteSite(site);
                         }}
                         title="Delete site"
                         data-testid={`button-delete-site-${site.id}`}
