@@ -14,6 +14,13 @@ const dateValue = (isEnd: boolean) => z.string().trim().min(1).refine(
 export const sitePulseOrderSchema = z.object({
   sitePulseOrderId: z.string().trim().min(1).max(200),
   partyName: z.string().trim().min(1).max(200),
+  partyDetails: z.object({
+    address: z.string().trim().max(300).optional(),
+    gstNo: z.string().trim().max(100).optional(),
+    panNo: z.string().trim().max(100).optional(),
+    contactPerson: z.string().trim().max(100).optional(),
+    mobile: z.string().trim().max(100).optional(),
+  }).strict().optional(),
   sitePulsePartyId: z.string().trim().min(1).max(200),
   siteName: z.string().trim().min(1).max(200),
   sitePulseSiteId: z.string().trim().min(1).max(200),
@@ -96,9 +103,11 @@ export async function receiveSitePulseOrder(
     party = await storage.createParty({
       partyName: input.partyName,
       partyCode: await storage.generatePartyCode(input.partyName),
-      address: null,
-      gstNo: null,
-      panNo: null,
+      address: nonBlankPartyDetail(input.partyDetails?.address) ?? null,
+      gstNo: nonBlankPartyDetail(input.partyDetails?.gstNo) ?? null,
+      panNo: nonBlankPartyDetail(input.partyDetails?.panNo) ?? null,
+      contactPerson: nonBlankPartyDetail(input.partyDetails?.contactPerson) ?? null,
+      mobile: nonBlankPartyDetail(input.partyDetails?.mobile) ?? null,
       status: "ACTIVE",
       accessId: createAccessId(),
       sitePulsePartyId: input.sitePulsePartyId,
@@ -106,8 +115,16 @@ export async function receiveSitePulseOrder(
     });
   } else if (party.sitePulsePartyId && party.sitePulsePartyId !== input.sitePulsePartyId) {
     throw new Error("sitePulsePartyId is already linked to a different party");
-  } else if (!party.sitePulsePartyId) {
-    party = (await storage.updateParty(party.id, { sitePulsePartyId: input.sitePulsePartyId })) || party;
+  } else {
+    const changes: Partial<Party> = {};
+    if (!party.sitePulsePartyId) changes.sitePulsePartyId = input.sitePulsePartyId;
+    for (const field of ["address", "gstNo", "panNo", "contactPerson", "mobile"] as const) {
+      const value = input.partyDetails?.[field]?.trim();
+      if (value) changes[field] = value;
+    }
+    if (Object.keys(changes).length > 0) {
+      party = (await storage.updateParty(party.id, changes)) || party;
+    }
   }
 
   const allSites = await storage.getAllSites();
@@ -150,4 +167,9 @@ export async function receiveSitePulseOrder(
   })));
 
   return { party, site, order };
+}
+
+function nonBlankPartyDetail(value: string | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  return value.trim() ? value.trim() : null;
 }

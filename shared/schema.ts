@@ -27,6 +27,8 @@ export const parties = pgTable("parties", {
   address: text("address"),
   gstNo: text("gst_no"),
   panNo: text("pan_no"),
+  contactPerson: text("contact_person"),
+  mobile: text("mobile"),
   status: text("status").notNull(),
   accessId: text("access_id").notNull().unique(),
   sitePulsePartyId: text("sitepulse_party_id").unique(),

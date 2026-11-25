@@ -438,7 +438,7 @@ export async function registerRoutes(
 
   app.post("/api/parties", requireAdmin, async (req: Request, res: Response) => {
     try {
-      const { partyName, address, gstNo, panNo } = req.body;
+      const { partyName, address, gstNo, panNo, contactPerson, mobile } = req.body;
       
       if (!partyName) {
         return res.status(400).json({ error: "Party name is required" });
@@ -453,6 +453,8 @@ export async function registerRoutes(
         address: address?.toUpperCase() || null,
         gstNo: gstNo?.toUpperCase() || null,
         panNo: panNo?.toUpperCase() || null,
+        contactPerson: contactPerson?.trim() || null,
+        mobile: mobile?.trim() || null,
         status: "ACTIVE",
         accessId,
         createdBy: null,

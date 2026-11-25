@@ -63,6 +63,8 @@ type Party = {
   address?: string | null;
   gstNo?: string | null;
   panNo?: string | null;
+  contactPerson?: string | null;
+  mobile?: string | null;
   status: PartyStatus;
   accessId: string;
   createdAt: string;
@@ -153,6 +155,8 @@ export default function AdminDashboard() {
     address: "",
     gstNo: "",
     panNo: "",
+    contactPerson: "",
+    mobile: "",
   });
   const [siteFilterReports, setSiteFilterReports] = useState<string>("all");
 
@@ -270,7 +274,7 @@ export default function AdminDashboard() {
   });
 
   const createPartyMutation = useMutation({
-    mutationFn: async (data: typeof partyForm) => {
+    mutationFn: async (data: Omit<typeof partyForm, "partyCode">) => {
       const res = await fetch("/api/parties", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -279,6 +283,8 @@ export default function AdminDashboard() {
           address: data.address?.toUpperCase() || null,
           gstNo: data.gstNo?.toUpperCase() || null,
           panNo: data.panNo?.toUpperCase() || null,
+          contactPerson: data.contactPerson?.trim() || null,
+          mobile: data.mobile?.trim() || null,
         }),
       });
       if (!res.ok) {
@@ -519,6 +525,8 @@ export default function AdminDashboard() {
       address: "",
       gstNo: "",
       panNo: "",
+      contactPerson: "",
+      mobile: "",
     });
   }
 
@@ -536,6 +544,8 @@ export default function AdminDashboard() {
       address: party.address || "",
       gstNo: party.gstNo || "",
       panNo: party.panNo || "",
+      contactPerson: party.contactPerson || "",
+      mobile: party.mobile || "",
     });
     setShowPartyDialog(true);
   }
@@ -555,6 +565,8 @@ export default function AdminDashboard() {
           address: partyForm.address?.toUpperCase() || null,
           gstNo: partyForm.gstNo?.toUpperCase() || null,
           panNo: partyForm.panNo?.toUpperCase() || null,
+          contactPerson: partyForm.contactPerson?.trim() || null,
+          mobile: partyForm.mobile?.trim() || null,
         },
       });
     } else {
@@ -563,6 +575,8 @@ export default function AdminDashboard() {
         address: partyForm.address?.toUpperCase() || "",
         gstNo: partyForm.gstNo?.toUpperCase() || "",
         panNo: partyForm.panNo?.toUpperCase() || "",
+        contactPerson: partyForm.contactPerson?.trim() || "",
+        mobile: partyForm.mobile?.trim() || "",
       });
     }
   }
@@ -1238,6 +1252,8 @@ export default function AdminDashboard() {
                     <TableHead>Address</TableHead>
                     <TableHead>GST No</TableHead>
                     <TableHead>PAN No</TableHead>
+                    <TableHead>Contact person</TableHead>
+                    <TableHead>Mobile</TableHead>
                     <TableHead>Dispatched (MT)</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
@@ -1246,7 +1262,7 @@ export default function AdminDashboard() {
                 <TableBody>
                   {filteredParties.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-gray-500 py-8">
+                      <TableCell colSpan={10} className="text-center text-gray-500 py-8">
                         No parties found
                       </TableCell>
                     </TableRow>
@@ -1260,6 +1276,8 @@ export default function AdminDashboard() {
                           <TableCell>{party.address || "-"}</TableCell>
                           <TableCell>{party.gstNo || "-"}</TableCell>
                           <TableCell>{party.panNo || "-"}</TableCell>
+                          <TableCell>{party.contactPerson || "-"}</TableCell>
+                          <TableCell>{party.mobile || "-"}</TableCell>
                           <TableCell>{totals.dispatched.toFixed(2)}</TableCell>
                           <TableCell>
                             <Badge
@@ -2064,6 +2082,28 @@ export default function AdminDashboard() {
                   placeholder="Enter PAN number (optional)"
                   data-testid="input-pan-no"
                   style={{ textTransform: "uppercase" }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="contactPerson">Contact person</Label>
+                <Input
+                  id="contactPerson"
+                  value={partyForm.contactPerson}
+                  onChange={(e) => setPartyForm({ ...partyForm, contactPerson: e.target.value })}
+                  placeholder="Enter contact person (optional)"
+                  data-testid="input-contact-person"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mobile">Mobile</Label>
+                <Input
+                  id="mobile"
+                  value={partyForm.mobile}
+                  onChange={(e) => setPartyForm({ ...partyForm, mobile: e.target.value })}
+                  placeholder="Enter mobile (optional)"
+                  data-testid="input-party-mobile"
                 />
               </div>
             </div>
